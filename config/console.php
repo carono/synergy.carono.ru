@@ -10,31 +10,35 @@ $config = [
     'controllerNamespace' => 'app\commands',
     'aliases' => [
         '@bower' => '@vendor/bower-asset',
-        '@npm'   => '@vendor/npm-asset',
+        '@npm' => '@vendor/npm-asset',
         '@tests' => '@app/tests',
     ],
-    'components' => [
+    'components' => array_merge(require __DIR__ . '/components.php', [
         'cache' => [
             'class' => 'yii\caching\FileCache',
         ],
-        'log' => [
-            'targets' => [
-                [
-                    'class' => 'yii\log\FileTarget',
-                    'levels' => ['error', 'warning'],
-                ],
-            ],
-        ],
         'db' => $db,
     ],
+    ),
     'params' => $params,
-    /*
     'controllerMap' => [
-        'fixture' => [ // Fixture generation command line.
-            'class' => 'yii\faker\FixtureController',
+        'migrate' => [
+            'class' => \yii\console\controllers\MigrateController::class,
+            'templateFile' => '@app/templates/migration.php',
+            'migrationPath' => [
+                '@app/migrations',
+                '@vendor/yiisoft/yii2/rbac/migrations',
+            ]
+        ],
+        'giix' => [
+            'class' => 'carono\giix\GiixController',
+            'generator' => \app\templates\Generator::class,
+            'templatePath' => '@app/templates/giix',
+            'exceptTables' => [
+                '{{%migration}}'
+            ],
         ],
     ],
-    */
 ];
 
 if (YII_ENV_DEV) {

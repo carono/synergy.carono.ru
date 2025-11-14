@@ -9,7 +9,7 @@ $config = [
         '@bower' => '@vendor/bower-asset',
         '@npm' => '@vendor/npm-asset',
     ],
-    'components' => [
+    'components' => array_merge(require __DIR__ . '/components.php', [
         'request' => [
             // !!! insert a secret key in the following (if it is empty) - this is required by cookie validation
             'cookieValidationKey' => 'MlExjyjvvjd6_DEuUHpbjKFrCJ9AEQ-E',
@@ -40,15 +40,7 @@ $config = [
             ],
         ],
         'db' => file_exists(__DIR__ . '/db-local.php') ? require __DIR__ . '/db-local.php' : [],
-        /*
-        'urlManager' => [
-            'enablePrettyUrl' => true,
-            'showScriptName' => false,
-            'rules' => [
-            ],
-        ],
-        */
-    ],
+    ]),
     'params' => array_merge(require __DIR__ . '/params.php', file_exists(__DIR__ . '/params-local.php') ? require __DIR__ . '/params-local.php' : []),
 ];
 
