@@ -16,6 +16,11 @@ return [
         'class' => 'yii\rbac\DbManager',
         'defaultRoles' => ['guest', 'user'],
     ],
+    'assetManager' => [
+        'class' => 'yii\web\AssetManager',
+        'appendTimestamp' => true,
+        'linkAssets' => true,
+    ],
     'formatter' => [
         'class' => Formatter::class,
         'datetimeFormat' => 'dd LLL yyyy, HH:mm',

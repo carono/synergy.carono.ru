@@ -17,19 +17,36 @@ use yii\bootstrap5\NavBar;
     echo Nav::widget([
         'options' => ['class' => 'navbar-nav'],
         'items' => [
-            ['label' => 'Home', 'url' => ['/site/index']],
-            ['label' => 'About', 'url' => ['/site/about']],
-            ['label' => 'Contact', 'url' => ['/site/contact']],
-            Yii::$app->user->isGuest
-                ? ['label' => 'Login', 'url' => ['/site/login']]
-                : '<li class="nav-item">'
-                . Html::beginForm(['/site/logout'])
-                . Html::submitButton(
-                    'Logout (' . Yii::$app->user->identity->username . ')',
-                    ['class' => 'nav-link btn btn-link logout']
-                )
-                . Html::endForm()
-                . '</li>'
+            [
+                'label' => 'Главная',
+                'url' => ['/site/index'],
+                'options' => [
+                    'class' => 'nav-link btn btn-link',
+                ]
+            ],
+            [
+                'label' => 'О студенте',
+                'url' => ['/site/about'],
+                'options' => [
+                    'class' => 'nav-link btn btn-link',
+                ]
+            ],
+            [
+                'label' => 'Вход',
+                'url' => ['/site/login'],
+                'visible' => Yii::$app->user->isGuest
+            ],
+            [
+                'label' => 'Выход',
+                'url' => ['/site/logout'],
+                'visible' => !Yii::$app->user->isGuest,
+                'linkOptions' => [
+                    'data-method' => 'post'
+                ],
+                'options' => [
+                    'class' => 'nav-link btn btn-link logout',
+                ]
+            ],
         ]
     ]);
     NavBar::end();
