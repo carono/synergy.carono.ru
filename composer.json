@@ -20,7 +20,8 @@
         "yiisoft/yii2-symfonymailer": "~2.0.3",
         "carono/yii2-migrate": "^1.1",
         "carono/yii2-rbac": "^1.2",
-        "carono/yii2-action-column": "^1.0"
+        "carono/yii2-action-column": "^1.0",
+        "carono/yii2-giix": "^0.4.8"
     },
     "require-dev": {
         "yiisoft/yii2-debug": "~2.1.0",
