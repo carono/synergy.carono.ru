@@ -1,7 +1,7 @@
 <?php
 
-$params = require __DIR__ . '/params.php';
-$db = require __DIR__ . '/db.php';
+
+use carono\yii2rbac\RbacController;
 
 $config = [
     'id' => 'basic-console',
@@ -17,10 +17,8 @@ $config = [
         'cache' => [
             'class' => 'yii\caching\FileCache',
         ],
-        'db' => $db,
-    ],
-    ),
-    'params' => $params,
+    ]),
+    'params' => array_merge(require __DIR__ . '/params.php', file_exists(__DIR__ . '/params-local.php') ? require __DIR__ . '/params-local.php' : []),
     'controllerMap' => [
         'migrate' => [
             'class' => \yii\console\controllers\MigrateController::class,
@@ -38,7 +36,16 @@ $config = [
                 '{{%migration}}'
             ],
         ],
-    ],
+        'rbac' => [
+            'class' => RbacController::class,
+            'roles' => [
+                'user' => '',
+            ],
+            'permissions' => [
+                'Basic:*:*' => ['user'],
+            ]
+        ],
+    ]
 ];
 
 if (YII_ENV_DEV) {

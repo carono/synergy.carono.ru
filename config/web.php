@@ -30,16 +30,6 @@ $config = [
             // send all mails to a file by default.
             'useFileTransport' => true,
         ],
-        'log' => [
-            'traceLevel' => YII_DEBUG ? 3 : 0,
-            'targets' => [
-                [
-                    'class' => 'yii\log\FileTarget',
-                    'levels' => ['error', 'warning'],
-                ],
-            ],
-        ],
-        'db' => file_exists(__DIR__ . '/db-local.php') ? require __DIR__ . '/db-local.php' : [],
     ]),
     'params' => array_merge(require __DIR__ . '/params.php', file_exists(__DIR__ . '/params-local.php') ? require __DIR__ . '/params-local.php' : []),
 ];

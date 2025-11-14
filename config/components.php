@@ -1,6 +1,7 @@
 <?php
 return [
     'log' => [
+        'traceLevel' => YII_DEBUG ? 3 : 0,
         'targets' => [
             [
                 'class' => 'yii\log\FileTarget',
@@ -8,6 +9,11 @@ return [
             ],
         ],
     ],
+    'authManager' => [
+        'class' => 'yii\rbac\DbManager',
+        'defaultRoles' => ['guest', 'user'],
+    ],
+    'db' => file_exists(__DIR__ . '/db-local.php') ? require __DIR__ . '/db-local.php' : [],
     'urlManager' => [
         'enablePrettyUrl' => true,
         'enableStrictParsing' => true,
