@@ -1,4 +1,7 @@
 <?php
+
+use app\components\Formatter;
+
 return [
     'log' => [
         'traceLevel' => YII_DEBUG ? 3 : 0,
@@ -12,6 +15,21 @@ return [
     'authManager' => [
         'class' => 'yii\rbac\DbManager',
         'defaultRoles' => ['guest', 'user'],
+    ],
+    'formatter' => [
+        'class' => Formatter::class,
+        'datetimeFormat' => 'dd LLL yyyy, HH:mm',
+        'defaultTimeZone' => 'Europe/Moscow',
+        'nullDisplay' => '',
+    ],
+    'i18n' => [
+        'translations' => [
+            '*' => [
+                'class' => 'yii\i18n\PhpMessageSource',
+                'basePath' => '@app/messages',
+                'sourceLanguage' => 'en',
+            ],
+        ],
     ],
     'db' => file_exists(__DIR__ . '/db-local.php') ? require __DIR__ . '/db-local.php' : [],
     'urlManager' => [
