@@ -2,52 +2,112 @@
 
 /** @var yii\web\View $this */
 
-$this->title = 'My Yii Application';
+$this->title = 'Практические задачи';
 ?>
-<div class="site-index">
 
-    <div class="jumbotron text-center bg-transparent mt-5 mb-5">
-        <h1 class="display-4">Congratulations!</h1>
+<h1 class="text-center"><?= $this->title ?></h1>
 
-        <p class="lead">You have successfully created your Yii-powered application.</p>
+<div class="container mt-4">
+    <div class="practical-lessons">
+        <!-- Курс 1 -->
+        <div class="course-block">
+            <h3 class="course-title">Курс 1</h3>
 
-        <p><a class="btn btn-lg btn-success" href="https://www.yiiframework.com">Get started with Yii</a></p>
-    </div>
-
-    <div class="body-content">
-
-        <div class="row">
-            <div class="col-lg-4 mb-3">
-                <h2>Heading</h2>
-
-                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et
-                    dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip
-                    ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
-                    fugiat nulla pariatur.</p>
-
-                <p><a class="btn btn-outline-secondary" href="https://www.yiiframework.com/doc/">Yii Documentation &raquo;</a></p>
+            <!-- Семестр 1 (активный) -->
+            <div class="semester-block">
+                <h4 class="semester-title">Семестр 1</h4>
+                <div class="lessons-list">
+                    <a href="#" class="lesson-item disabled">
+                        <span class="lesson-name">Практических занятий нет</span>
+                    </a>
+                </div>
             </div>
-            <div class="col-lg-4 mb-3">
-                <h2>Heading</h2>
 
-                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et
-                    dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip
-                    ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
-                    fugiat nulla pariatur.</p>
-
-                <p><a class="btn btn-outline-secondary" href="https://www.yiiframework.com/forum/">Yii Forum &raquo;</a></p>
-            </div>
-            <div class="col-lg-4">
-                <h2>Heading</h2>
-
-                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et
-                    dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip
-                    ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
-                    fugiat nulla pariatur.</p>
-
-                <p><a class="btn btn-outline-secondary" href="https://www.yiiframework.com/extensions/">Yii Extensions &raquo;</a></p>
+            <!-- Семестр 2 (активный) -->
+            <div class="semester-block">
+                <h4 class="semester-title">Семестр 2</h4>
+                <div class="lessons-list">
+                    <a href="/course/first/semester2/case-1" class="lesson-item">
+                        <span class="lesson-number">1.</span>
+                        <span class="lesson-name">Одномерный массив А размерности N</span>
+                    </a>
+                    <a href="/course/first/semester2/case-2" class="lesson-item">
+                        <span class="lesson-number">2.</span>
+                        <span class="lesson-name">Демонстрация работы методов базового и производного классов</span>
+                    </a>
+                    <a href="/course/first/semester2/case-3" class="lesson-item">
+                        <span class="lesson-number">3.</span>
+                        <span class="lesson-name">База данных «Туризм»</span>
+                    </a>
+                    <a href="/course/first/semester2/case-4" class="lesson-item">
+                        <span class="lesson-number">4.</span>
+                        <span class="lesson-name">Анализ имеющихся на рынке ПО информационных систем, приложение на любую тему</span>
+                    </a>
+                    <a href="/course/first/semester2/case-5" class="lesson-item">
+                        <span class="lesson-number">5.</span>
+                        <span class="lesson-name">Аналитический обзор проделанной работы</span>
+                    </a>
+                </div>
             </div>
         </div>
 
+        <!-- Курс 2 (неактивный) -->
+        <div class="course-block disabled">
+            <h3 class="course-title">Курс 2</h3>
+
+            <!-- Семестр 3 (неактивный) -->
+            <div class="semester-block">
+                <h4 class="semester-title">Семестр 3</h4>
+                <div class="lessons-list">
+                    <span class="lesson-item disabled">
+                        <span class="lesson-name">Занятия не наступили</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Семестр 4 (неактивный) -->
+            <div class="semester-block">
+                <h4 class="semester-title">Семестр 4</h4>
+                <div class="lessons-list">
+                    <span class="lesson-item disabled">
+                        <span class="lesson-name">Занятия не наступили</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="course-block disabled">
+            <h3 class="course-title">Курс 3</h3>
+
+            <div class="semester-block">
+                <h4 class="semester-title">Семестр 5</h4>
+                <div class="lessons-list">
+                    <span class="lesson-item disabled">
+                        <span class="lesson-name">Занятия не наступили</span>
+                    </span>
+                </div>
+            </div>
+            <div class="semester-block">
+                <h4 class="semester-title">Семестр 6</h4>
+                <div class="lessons-list">
+                    <span class="lesson-item disabled">
+                        <span class="lesson-name">Занятия не наступили</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="course-block disabled">
+            <h3 class="course-title">Курс 4</h3>
+
+            <div class="semester-block">
+                <h4 class="semester-title">Семестр 7</h4>
+                <div class="lessons-list">
+                    <span class="lesson-item disabled">
+                        <span class="lesson-name">Занятия не наступили</span>
+                    </span>
+                </div>
+            </div>
+        </div>
     </div>
 </div>

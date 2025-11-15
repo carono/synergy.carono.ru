@@ -1,0 +1,150 @@
+.practical-lessons {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.course-block {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    background-color: #fff;
+}
+
+.course-block.disabled {
+    opacity: 0.6;
+    background-color: #f8f9fa;
+}
+
+.course-title {
+    color: #2c3e50;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #3498db;
+}
+
+.course-block.disabled .course-title {
+    color: #6c757d;
+    border-bottom-color: #6c757d;
+}
+
+.semester-block {
+    margin-bottom: 1.5rem;
+}
+
+.semester-block:last-child {
+    margin-bottom: 0;
+}
+
+.semester-title {
+    color: #495057;
+    font-weight: 500;
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.course-block.disabled .semester-title {
+    color: #6c757d;
+}
+
+.lessons-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.lesson-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    text-decoration: none;
+    color: #212529;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    transition: all 0.2s ease-in-out;
+}
+
+.lesson-item:hover {
+    background-color: #e9ecef;
+    border-color: #adb5bd;
+    text-decoration: none;
+    color: #212529;
+}
+
+.lesson-item.disabled {
+    color: #6c757d;
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    cursor: not-allowed;
+}
+
+.lesson-item.disabled:hover {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #6c757d;
+}
+
+.lesson-number {
+    font-weight: 600;
+    margin-right: 0.75rem;
+    color: #3498db;
+    min-width: 1.5rem;
+}
+
+.lesson-item.disabled .lesson-number {
+    color: #6c757d;
+}
+
+.lesson-name {
+    flex: 1;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .course-block {
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .course-title {
+        font-size: 1.25rem;
+    }
+
+    .semester-title {
+        font-size: 1rem;
+    }
+
+    .lesson-item {
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+.card {
+    border-radius: 10px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.card-header {
+    font-weight: 600;
+    font-size: 1.2rem;
+    background-color: #343a40;
+    color: #fff;
+}
+
+pre {
+    overflow-x: auto;
+}
+
+code {
+    border-radius: 20px;
+}
+
+.hljs {
+    background-color: #e9ecef;
+}
+
+.section {
+    margin-bottom: 30px;
+}

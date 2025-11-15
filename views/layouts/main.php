@@ -42,7 +42,10 @@ $this->registerLinkTag(['rel' => 'icon', 'type' => 'image/x-icon', 'href' => Yii
 
 <?= $this->render('partial/footer') ?>
 
+
+
 <?php $this->endBody() ?>
+<script>hljs.highlightAll();</script>
 </body>
 </html>
 <?php $this->endPage() ?>

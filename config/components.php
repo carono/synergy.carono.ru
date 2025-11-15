@@ -43,7 +43,7 @@ return [
         'showScriptName' => false,
         'rules' => [
             '/' => 'site/index',
-            '<module>/<controller>/<action>' => '<module>/<controller>/<action>',
+            'course/<module>/<controller>/<action>' => '<module>/<controller>/<action>',
             '<controller>/<action>' => '<controller>/<action>',
             '<action>' => ''
         ],

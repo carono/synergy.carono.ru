@@ -43,6 +43,7 @@ $config = [
             ],
             'permissions' => [
                 'Basic:*:*' => ['user'],
+                'Basic:*:*:*' => ['user'],
             ]
         ],
     ]
