@@ -10,8 +10,6 @@ use app\widgets\Card;
 use carono\yii2rbac\RoleManager;
 use yii\helpers\Html;
 use yii\web\View;
-use yii\widgets\ActiveForm;
-use yii\widgets\Pjax;
 
 
 $sources = $model->getSources()->notDeleted()->orderBy(['pos' => SORT_ASC])->all();
@@ -35,6 +33,9 @@ echo Card::widget([
     'content' => $model->comment
 ]);
 
+if (RoleManager::haveRole('admin')) {
+    echo Html::a('Добавить решение', ['/admin/source/create', 'task_id' => $model->id]);
+}
 
 foreach ($sources as $source) {
     Card::begin([
