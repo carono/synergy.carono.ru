@@ -25,8 +25,7 @@ class Semester2Controller extends RbacController
     public function actionCase()
     {
         if ($this->request->post() && ($sourceId = $this->request->get('comment'))) {
-            if ($source = Source::findOne($sourceId)) {
-                $source->load($this->request->post());
+            if (($source = Source::findOne($sourceId)) && $source->load($this->request->post())) {
                 if ($source->save()) {
                     return Yii::$app->response->redirect($this->request->referrer, 302, false);
                 }
