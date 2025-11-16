@@ -1,0 +1,55 @@
+<?php
+/**
+ * @var View $this
+ * @var Task $model
+ */
+
+use app\helpers\CodeHelper;
+use app\models\Task;
+use app\widgets\Card;
+use yii\helpers\Html;
+use yii\web\View;
+
+
+$sources = $model->getSources()->notDeleted()->orderBy(['pos' => SORT_ASC])->all();
+
+echo Card::widget([
+    'caption' => 'Описание задачи',
+    'content' => $model->description
+]);
+
+if (empty($sources)) {
+    echo $this->render('//layouts/in-progress');
+    return;
+}
+
+
+echo Card::widget([
+    'caption' => 'Комментарий исполнителя',
+    'content' => $model->comment
+]);
+
+
+foreach ($sources as $source) {
+    Card::begin([
+        'caption' => $source->name,
+        'headerOptions' => [
+            'class' => 'card-header bg-success',
+        ],
+    ]);
+
+    if ($source->view) {
+        echo $this->render($source->view, ['model' => $model, 'source' => $source]);
+    }
+    if ($source->file) {
+        echo CodeHelper::outSourceFile($source->file);
+    }
+    if ($source->class) {
+        echo CodeHelper::outSource($source->class, $source->method);
+    }
+    if ($source->image) {
+        echo Html::tag('div', Html::img($source->image, ['width' => '100%', 'height' => '930px']), ['class' => 'text-center']);
+    }
+    Card::end();
+}
+

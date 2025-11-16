@@ -3,7 +3,7 @@
 namespace app\modules\first\controllers;
 
 use app\controllers\RbacController;
-use app\modules\first\case1\Case1;
+use app\models\Task;
 use Yii;
 
 /**
@@ -11,39 +11,22 @@ use Yii;
  */
 class Semester2Controller extends RbacController
 {
+    protected function getTask()
+    {
+        return Task::find()->joinWith(['semester.course'])
+            ->andWhere(['CONCAT("/course","/",module,"/",controller,"/",action)' => Yii::$app->request->url])
+            ->one();
+    }
+
+
     /**
      * Renders the index view for the module
      *
      * @return string
      */
-    public function actionCase1()
+    public function actionCase()
     {
-        $model = new Case1();
-        $model->input = '12, -5, 7, -3, 0, 18, -4, 6, -1 -11, 4, -2, 9';
-        if ($model->load(Yii::$app->request->post())) {
-            $model->process();
-        }
-
-        return $this->render('case1', ['model' => $model]);
-    }
-
-    public function actionCase2()
-    {
-        return $this->render('case2');
-    }
-
-    public function actionCase3()
-    {
-        return $this->render('case3');
-    }
-
-    public function actionCase4()
-    {
-        return $this->render('case4');
-    }
-
-    public function actionCase5()
-    {
-        return $this->render('//layouts/in-progress');
+        $model = $this->getTask();
+        return $this->render('case', ['model' => $model]);
     }
 }

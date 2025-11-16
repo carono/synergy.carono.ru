@@ -23,6 +23,7 @@ use yii\helpers\ArrayHelper;
  * @property string $method
  * @property string $file
  * @property string $deleted_at
+ * @property string $image
  *
  * @property \app\models\Comment[] $comments
  * @property \app\models\Task $task
@@ -51,13 +52,14 @@ class Source extends ActiveRecord
 	public function rules()
 	{
 		return [
-		[['name', 'description', 'view', 'task_id', 'class', 'method', 'file', 'deleted_at'], 'default', 'value' => null],
+		[['name', 'description', 'view', 'task_id', 'class', 'method', 'file', 'deleted_at', 'image'], 'default', 'value' => null],
 		      [['pos'], 'default', 'value' => 10],
+		      [['description'], 'string'],
 		      [['pos', 'task_id'], 'integer'],
 		      [['deleted_at'], 'safe'],
-		      [['name', 'description', 'view', 'class', 'method', 'file'], 'string', 'max' => 255],
+		      [['name', 'view', 'class', 'method', 'file', 'image'], 'string', 'max' => 255],
 		      [['task_id'], 'exist', 'skipOnError' => true, 'targetClass' => \app\models\Task::class, 'targetAttribute' => ['task_id' => 'id']],
-		      [['name', 'description', 'view', 'class', 'method', 'file'], 'trim']
+		      [['name', 'description', 'view', 'class', 'method', 'file', 'image'], 'trim']
 		];
 	}
 
@@ -101,7 +103,8 @@ class Source extends ActiveRecord
 		    'class' => Yii::t('models', 'Class'),
 		    'method' => Yii::t('models', 'Method'),
 		    'file' => Yii::t('models', 'File'),
-		    'deleted_at' => Yii::t('models', 'Deleted At')
+		    'deleted_at' => Yii::t('models', 'Deleted At'),
+		    'image' => Yii::t('models', 'Image')
 		];
 	}
 

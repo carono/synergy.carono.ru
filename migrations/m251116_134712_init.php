@@ -44,7 +44,7 @@ class m251116_134712_init extends Migration
             '{{%source}}' => [
                 'id' => $this->primaryKey(),
                 'name' => $this->string(),
-                'description' => $this->string(),
+                'description' => $this->text(),
                 'view' => $this->string(),
                 'pos' => $this->integer()->notNull()->defaultValue(10),
                 'task_id' => $this->foreignKey('{{%task}}'),
