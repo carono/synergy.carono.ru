@@ -51,7 +51,7 @@ $this->params['breadcrumbs'][] = $this->title;
 
             <aside style="padding:14px;border-radius:10px;background:#fbfdff;border:1px solid #eef2ff;">
                 <p style="margin:0 0 8px;font-size:14px;color:#0f172a;font-weight:600;">Ссылки</p>
-                <p style="margin:6px 0 6px;font-size:14px;"><a href="https://github.com/carono" target="_blank" rel="noopener noreferrer">Гипхаб: github.com/carono</a></p>
+                <p style="margin:6px 0 6px;font-size:14px;"><a href="https://github.com/carono/synergy.carono.ru" target="_blank" rel="noopener noreferrer">Гитхаб: github.com/carono</a></p>
                 <p style="margin:6px 0 6px;font-size:14px;"><a href="https://carono.ru" target="_blank" rel="noopener noreferrer">Контакты: carono.ru</a></p>
             </aside>
         </section>
