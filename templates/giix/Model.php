@@ -56,9 +56,7 @@ PHP;
         if ($behaviors) {
             $behaviorsString = implode(",\n", $behaviors);
             $php = <<<PHP
-return array_merge(\app\helpers\BehaviorHelper::getBehaviorConfigures(self::class), [
-$behaviorsString
-]);
+return [$behaviorsString];
 PHP;
             $method->addBody($php);
             return true;

@@ -39,11 +39,13 @@ $config = [
         'rbac' => [
             'class' => RbacController::class,
             'roles' => [
+                'admin' => '',
                 'user' => '',
             ],
             'permissions' => [
                 'Basic:*:*' => ['user'],
-                'Basic:*:*:*' => ['user'],
+                'Basic:First:*:*' => ['user'],
+                'Basic:*:*:*' => ['admin'],
             ]
         ],
     ]
