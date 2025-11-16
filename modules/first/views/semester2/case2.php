@@ -6,10 +6,11 @@
 
 use app\helpers\CodeHelper;
 use app\modules\first\case1\Case1;
+use app\modules\first\case2\Animal;
+use app\modules\first\case2\Cat;
+use app\modules\first\case2\Dog;
 use app\widgets\Card;
-use yii\helpers\Html;
 use yii\web\View;
-use yii\widgets\ActiveForm;
 
 
 echo Card::widget([
@@ -29,7 +30,17 @@ Card::begin([
         'class' => 'card-header bg-success',
     ],
 ]);
-echo CodeHelper::outSource(Case1::class);
+
+echo $this->render('@app/modules/first/case2/result.php');
+
+echo CodeHelper::outSourceFile('@app/modules/first/case2/result.php');
+
+echo CodeHelper::outSource(Animal::class);
+
+echo CodeHelper::outSource(Dog::class);
+
+echo CodeHelper::outSource(Cat::class);
+
 
 Card::end();
 

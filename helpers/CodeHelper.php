@@ -2,21 +2,40 @@
 
 namespace app\helpers;
 
-use app\modules\first\forms\Case1Form;
+use ReflectionClass;
 use ReflectionMethod;
 use Yii;
 use yii\helpers\Html;
 
 class CodeHelper
 {
-    public static function outSource($class, $method)
+    public static function outSourceFile($file)
+    {
+        $source = CodeHelper::outGitHubLink($file);
+        $code = htmlspecialchars(file_get_contents(Yii::getAlias($file)));
+        return <<<HTML
+<div>Исходный код файла $source</div>
+<pre class="language-php"><code>{$code}</code></pre>
+HTML;
+    }
+
+    public static function outSource($class, $method = null)
     {
         $source = CodeHelper::outGitHubLink($class);
-        $code = self::getClassMethodSourceCode($class, $method);
+
+        if ($method) {
+            $code = self::getClassMethodSourceCode($class, $method);
+            $title = "Исходный код метода на github:";
+        } else {
+            $code = self::getClassSourceCode($class);
+            $title = "Исходный код класса на github:";
+        }
+
+        $code = htmlspecialchars($code);
 
         return <<<HTML
-<div>Исходный код на github: $source</div>
-<pre class=\"language-php\"><code>{$code}</code></pre>
+<div>$title $source</div>
+<pre class="language-php"><code>{$code}</code></pre>
 HTML;
     }
 
@@ -44,19 +63,35 @@ HTML;
         return implode("", $methodLines);
     }
 
-    public static function getClassFilePath(string $class): ?string
+    public static function getClassSourceCode(string $className): ?string
     {
-        $file = $class;
-        $file = str_replace('\\', '/', $file);
-        return Yii::getAlias('@' . $file) . '.php';
+        $filePath = self::getClassFilePath($className);
+
+        if (!file_exists($filePath)) {
+            throw new \Exception("File for class $className not found.");
+        }
+
+        return file_get_contents($filePath);
     }
 
-    public static function outGitHubLink($class, $caption = null)
+    public static function getClassFilePath(string $class): ?string
     {
-        $file = $class;
-        $file = str_replace('\\', '/', $file);
-        $url = str_replace('app/', 'https://github.com/carono/synergy.carono.ru/blob/master/', $file) . '.php';
-        $caption = $caption ?:  str_replace('app/', '', $file);
+        $reflection = new ReflectionClass($class);
+        return $reflection->getFileName();
+    }
+
+    public static function outGitHubLink($object, $caption = null)
+    {
+        if (file_exists(Yii::getAlias($object))) {
+            $file = Yii::getAlias($object);
+            $url = str_replace(Yii::getAlias('@app'), 'https://github.com/carono/synergy.carono.ru/blob/master', $file);
+            $caption = str_replace(Yii::getAlias('@app'), '', $file);
+        } else {
+            $file = $object;
+            $file = str_replace('\\', '/', $file);
+            $url = str_replace('app/', 'https://github.com/carono/synergy.carono.ru/blob/master/', $file) . '.php';
+            $caption = $caption ?: str_replace('app/', '', $file);
+        }
         return Html::a($caption, $url, ['target' => '_blank']);
     }
 }

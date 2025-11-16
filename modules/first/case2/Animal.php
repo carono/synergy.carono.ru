@@ -2,23 +2,27 @@
 
 namespace app\modules\first\case2;
 
-class Animal
+abstract class Animal
 {
     protected $name;
+    protected $food;
 
     // Конструктор базового класса
-    public function __construct($name)
+    public function __construct($name, $food)
     {
         $this->name = $name;
+        $this->food = $food;
     }
 
-    public function speak()
+    abstract public function speak();
+
+    public function getName()
     {
-        return $this->name . " издает звук.<br>";
+        return $this->name;
     }
 
-    public function eat($food)
+    public function getFood()
     {
-        echo $this->name . " ест " . $food . ".<br>";
+        return $this->food;
     }
 }
