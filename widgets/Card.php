@@ -27,6 +27,6 @@ class Card extends Widget
         $internalContent = ob_get_clean();
         $name = Inflector::slug((new ReflectionClass($this))->getShortName());
         $this->layout = $this->layout ?: '@app/widgets/' . $name . '/main';
-        echo \Yii::$app->getView()->render($this->layout, ['content' => $this->content ?: $internalContent], $this);
+        echo \Yii::$app->getView()->render($this->layout, ['content' => nl2br($this->content) ?: $internalContent], $this);
     }
 }

@@ -11,23 +11,25 @@ class CodeHelper
 {
     public static function outSourceFile($file)
     {
+        $filePath = Yii::getAlias($file);
         $source = CodeHelper::outGitHubLink($file);
-        $code = htmlspecialchars(file_get_contents(Yii::getAlias($file)));
+        $code = htmlspecialchars(file_get_contents($filePath));
+        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
         return <<<HTML
 <div>Исходный код файла $source</div>
-<pre class="language-php"><code>{$code}</code></pre>
+<pre class="language-{$extension}"><code>{$code}</code></pre>
 HTML;
     }
 
-    public static function outSource($class, $method = null)
+    public static function outSource($object, $method = null)
     {
-        $source = CodeHelper::outGitHubLink($class);
+        $source = CodeHelper::outGitHubLink($object);
 
         if ($method) {
-            $code = self::getClassMethodSourceCode($class, $method);
+            $code = self::getClassMethodSourceCode($object, $method);
             $title = "Исходный код метода на github:";
         } else {
-            $code = self::getClassSourceCode($class);
+            $code = self::getClassSourceCode($object);
             $title = "Исходный код класса на github:";
         }
 
