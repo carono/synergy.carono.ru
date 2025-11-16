@@ -15,7 +15,7 @@ class HighlightAsset extends AssetBundle
     public $js = [
         'lib/highlight/highlight.min.js',
         'lib/highlight/languages/php.min.js',
-        'lib/highlight/languages/js.min.js',
+        'lib/highlight/languages/sql.min.js',
         'lib/highlight/languages/python.min.js',
     ];
 

@@ -39,7 +39,7 @@ class Semester2Controller extends RbacController
 
     public function actionCase4()
     {
-        return $this->render('//layouts/in-progress');
+        return $this->render('case4');
     }
 
     public function actionCase5()
