@@ -9,6 +9,8 @@ use app\models\Task;
 use app\widgets\Card;
 use yii\helpers\Html;
 use yii\web\View;
+use yii\widgets\ActiveForm;
+use yii\widgets\Pjax;
 
 
 $sources = $model->getSources()->notDeleted()->orderBy(['pos' => SORT_ASC])->all();
@@ -31,13 +33,18 @@ echo Card::widget([
 
 
 foreach ($sources as $source) {
+    $url = parse_url(Yii::$app->request->url, PHP_URL_PATH) . '?comment=' . $source->id;
+    Pjax::begin();
+    if (Yii::$app->request->get('comment') == $source->id) {
+        $form = ActiveForm::begin(['options' => ['data-pjax' => 1]]);
+    }
     Card::begin([
         'caption' => $source->name,
+        'footer' => $this->render('partial/source-footer', ['model' => $source, 'form' => $form ?? null]),
         'headerOptions' => [
-            'class' => 'card-header bg-success',
+            'class' => ['bg-success'],
         ],
     ]);
-
     if ($source->view) {
         echo $this->render($source->view, ['model' => $model, 'source' => $source]);
     }
@@ -51,5 +58,9 @@ foreach ($sources as $source) {
         echo Html::tag('div', Html::img($source->image, ['width' => '100%', 'height' => '930px']), ['class' => 'text-center']);
     }
     Card::end();
+    if (Yii::$app->request->get('comment') == $source->id) {
+        ActiveForm::end();
+    }
+    Pjax::end();
 }
 

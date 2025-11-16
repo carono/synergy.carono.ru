@@ -2,7 +2,6 @@
 
 namespace app\controllers;
 
-use app\models\ContactForm;
 use app\models\LoginForm;
 use carono\yii2rbac\RoleManagerFilter;
 use Yii;

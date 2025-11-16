@@ -10,11 +10,11 @@ class Card extends Widget
 {
     public $caption;
     public $options = [];
-    public $headerOptions = [
-        'class' => 'card-header',
-    ];
+    public $headerOptions = [];
     public $content;
     public $layout;
+    public $toolbar = [];
+    public $footer;
 
     public function init()
     {

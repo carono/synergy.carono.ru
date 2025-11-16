@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0d4de8019502802504cbc321047b4fdd",
+    "content-hash": "0f2a50e62ff9c746e297c19fe558178f",
     "packages": [
         {
             "name": "bower-asset/bootstrap",
@@ -268,16 +268,16 @@
         },
         {
             "name": "carono/yii2-crud",
-            "version": "0.2.5",
+            "version": "dev-master",
             "source": {
                 "type": "git",
                 "url": "https://github.com/carono/yii2-crud.git",
-                "reference": "24ce3b121df46c6c4849890c651442597cca8ee0"
+                "reference": "72973d2c589a210c63c54368ea5954bcf1df9544"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/carono/yii2-crud/zipball/24ce3b121df46c6c4849890c651442597cca8ee0",
-                "reference": "24ce3b121df46c6c4849890c651442597cca8ee0",
+                "url": "https://api.github.com/repos/carono/yii2-crud/zipball/72973d2c589a210c63c54368ea5954bcf1df9544",
+                "reference": "72973d2c589a210c63c54368ea5954bcf1df9544",
                 "shasum": ""
             },
             "require": {
@@ -285,6 +285,7 @@
                 "php": ">=7.1",
                 "yiisoft/yii2": "~2.0"
             },
+            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -304,9 +305,9 @@
             ],
             "support": {
                 "issues": "https://github.com/carono/yii2-crud/issues",
-                "source": "https://github.com/carono/yii2-crud/tree/0.2.5"
+                "source": "https://github.com/carono/yii2-crud/tree/master"
             },
-            "time": "2025-10-02T10:41:47+00:00"
+            "time": "2025-11-11T10:21:02+00:00"
         },
         {
             "name": "carono/yii2-giix",
@@ -6237,7 +6238,9 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {
+        "carono/yii2-crud": 20
+    },
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
