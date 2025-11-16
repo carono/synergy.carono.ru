@@ -7,6 +7,7 @@
 use app\helpers\CodeHelper;
 use app\models\Task;
 use app\widgets\Card;
+use carono\yii2rbac\RoleManager;
 use yii\helpers\Html;
 use yii\web\View;
 use yii\widgets\ActiveForm;
@@ -17,6 +18,9 @@ $sources = $model->getSources()->notDeleted()->orderBy(['pos' => SORT_ASC])->all
 
 echo Card::widget([
     'caption' => 'Описание задачи',
+    'toolbar' => [
+        RoleManager::haveRole('admin') ? Html::a('Редактировать', ['/admin/task/update', 'id' => $model->id], ['class' => 'btn btn-primary btn-sm']) : ''
+    ],
     'content' => $model->description
 ]);
 
