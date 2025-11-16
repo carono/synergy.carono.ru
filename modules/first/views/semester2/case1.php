@@ -1,13 +1,17 @@
 <?php
 /**
  * @var Case1Form $model
+ * @var View $this
  */
 
 use app\modules\first\forms\Case1Form;
 use app\widgets\Card;
 use app\helpers\CodeHelper;
 use yii\helpers\Html;
+use yii\web\View;
 use yii\widgets\ActiveForm;
+
+
 
 echo Card::widget([
     'caption' => 'Описание задачи',

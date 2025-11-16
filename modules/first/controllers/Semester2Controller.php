@@ -25,4 +25,24 @@ class Semester2Controller extends RbacController
 
         return $this->render('case1', ['model' => $model]);
     }
+
+    public function actionCase2()
+    {
+        return $this->render('//layouts/in-progress');
+    }
+
+    public function actionCase3()
+    {
+        return $this->render('//layouts/in-progress');
+    }
+
+    public function actionCase4()
+    {
+        return $this->render('//layouts/in-progress');
+    }
+
+    public function actionCase5()
+    {
+        return $this->render('//layouts/in-progress');
+    }
 }
