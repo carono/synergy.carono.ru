@@ -61,6 +61,11 @@ class Case1Form extends Model
                 $max_index = $i;
             }
         }
+        if ($min_index > $max_index) {
+            $k = $min_index;
+            $min_index = $max_index;
+            $max_index = $k;
+        }
 
         // Суммируем отрицательные элементы между границами
         $sum = 0;
