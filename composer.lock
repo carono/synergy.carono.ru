@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b048de2645490385980bcff3f2d7126c",
+    "content-hash": "2074abd63b198416cf0b3efcdc7a7ff4",
     "packages": [
         {
             "name": "bower-asset/bootstrap",
@@ -181,6 +181,45 @@
                 "source": "https://github.com/carono/yii2-action-column/tree/1.0.2"
             },
             "time": "2025-10-01T11:37:24+00:00"
+        },
+        {
+            "name": "carono/yii2-basic-env",
+            "version": "1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/carono/yii2-basic-env.git",
+                "reference": "64288ad9101bbb8d640bca3b6e7d9c1a4d008200"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/carono/yii2-basic-env/zipball/64288ad9101bbb8d640bca3b6e7d9c1a4d008200",
+                "reference": "64288ad9101bbb8d640bca3b6e7d9c1a4d008200",
+                "shasum": ""
+            },
+            "type": "yii2-extension",
+            "extra": {
+                "bootstrap": "carono\\env\\Bootstrap"
+            },
+            "autoload": {
+                "psr-4": {
+                    "carono\\env\\": ""
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "carono",
+                    "email": "info@carono.ru"
+                }
+            ],
+            "support": {
+                "issues": "https://github.com/carono/yii2-basic-env/issues",
+                "source": "https://github.com/carono/yii2-basic-env/tree/master"
+            },
+            "time": "2017-07-07T21:52:50+00:00"
         },
         {
             "name": "carono/yii2-bower-asset",
