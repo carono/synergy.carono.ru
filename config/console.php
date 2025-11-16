@@ -28,6 +28,11 @@ $config = [
                 '@vendor/yiisoft/yii2/rbac/migrations',
             ]
         ],
+        'fixture' => [
+            'class' => \app\commands\FixtureController::class,
+            'namespace' => 'app\fixtures',
+            'globalFixtures' => [],
+        ],
         'giix' => [
             'class' => 'carono\giix\GiixController',
             'generator' => \app\templates\Generator::class,

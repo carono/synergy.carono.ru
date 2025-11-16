@@ -18,17 +18,17 @@ use yii\helpers\ArrayHelper;
  * @property string $description
  * @property string $view
  * @property integer $pos
- * @property integer $case_id
+ * @property integer $task_id
  * @property string $class
  * @property string $method
  * @property string $file
  *
- * @property \app\models\Case $case
  * @property \app\models\Comment[] $comments
+ * @property \app\models\Task $task
  */
 class Source extends ActiveRecord
 {
-	protected $_relationClasses = ['case_id' => 'app\models\Case'];
+	protected $_relationClasses = ['task_id' => 'app\models\Task'];
 
 
 	/**
@@ -37,11 +37,11 @@ class Source extends ActiveRecord
 	public function rules()
 	{
 		return [
-		[['name', 'description', 'view', 'case_id', 'class', 'method', 'file'], 'default', 'value' => null],
+		[['name', 'description', 'view', 'task_id', 'class', 'method', 'file'], 'default', 'value' => null],
 		      [['pos'], 'default', 'value' => 10],
-		      [['pos', 'case_id'], 'integer'],
+		      [['pos', 'task_id'], 'integer'],
 		      [['name', 'description', 'view', 'class', 'method', 'file'], 'string', 'max' => 255],
-		      [['case_id'], 'exist', 'skipOnError' => true, 'targetClass' => \app\models\Case::class, 'targetAttribute' => ['case_id' => 'id']],
+		      [['task_id'], 'exist', 'skipOnError' => true, 'targetClass' => \app\models\Task::class, 'targetAttribute' => ['task_id' => 'id']],
 		      [['name', 'description', 'view', 'class', 'method', 'file'], 'trim']
 		];
 	}
@@ -82,7 +82,7 @@ class Source extends ActiveRecord
 		    'description' => Yii::t('models', 'Description'),
 		    'view' => Yii::t('models', 'View'),
 		    'pos' => Yii::t('models', 'Pos'),
-		    'case_id' => Yii::t('models', 'Case ID'),
+		    'task_id' => Yii::t('models', 'Task ID'),
 		    'class' => Yii::t('models', 'Class'),
 		    'method' => Yii::t('models', 'Method'),
 		    'file' => Yii::t('models', 'File')
@@ -101,20 +101,20 @@ class Source extends ActiveRecord
 
 
 	/**
-	 * @return \app\models\query\CaseQuery|\yii\db\ActiveQuery
-	 */
-	public function getCase()
-	{
-		return $this->hasOne(\app\models\Case::class, ['id' => 'case_id']);
-	}
-
-
-	/**
 	 * @return \app\models\query\CommentQuery|\yii\db\ActiveQuery
 	 */
 	public function getComments()
 	{
 		return $this->hasMany(\app\models\Comment::class, ['source_id' => 'id']);
+	}
+
+
+	/**
+	 * @return \app\models\query\TaskQuery|\yii\db\ActiveQuery
+	 */
+	public function getTask()
+	{
+		return $this->hasOne(\app\models\Task::class, ['id' => 'task_id']);
 	}
 
 

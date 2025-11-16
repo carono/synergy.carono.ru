@@ -45,6 +45,7 @@ return [
             '/' => 'site/index',
             'course/<module>/<controller>/<action>' => '<module>/<controller>/<action>',
             '<controller>/<action>' => '<controller>/<action>',
+            '<module>/<controller>/<action>' => '<module>/<controller>/<action>',
             '<action>' => ''
         ],
     ],

@@ -17,12 +17,14 @@ use yii\helpers\ArrayHelper;
  * @property string $name
  * @property integer $course_id
  * @property string $controller
+ * @property string $start_at
+ * @property string $end_at
  * @property integer $pos
  * @property string $deleted_at
  * @property string $created_at
  *
- * @property \app\models\Case[] $cases
  * @property \app\models\Course $course
+ * @property \app\models\Task[] $tasks
  */
 class Semester extends ActiveRecord
 {
@@ -54,10 +56,10 @@ class Semester extends ActiveRecord
 	public function rules()
 	{
 		return [
-		[['name', 'course_id', 'controller', 'deleted_at'], 'default', 'value' => null],
+		[['name', 'course_id', 'controller', 'start_at', 'end_at', 'deleted_at'], 'default', 'value' => null],
 		      [['pos'], 'default', 'value' => 10],
 		      [['course_id', 'pos'], 'integer'],
-		      [['deleted_at'], 'safe'],
+		      [['start_at', 'end_at', 'deleted_at'], 'safe'],
 		      [['name', 'controller'], 'string', 'max' => 255],
 		      [['course_id'], 'exist', 'skipOnError' => true, 'targetClass' => \app\models\Course::class, 'targetAttribute' => ['course_id' => 'id']],
 		      [['name', 'controller'], 'trim']
@@ -99,6 +101,8 @@ class Semester extends ActiveRecord
 		    'name' => Yii::t('models', 'Name'),
 		    'course_id' => Yii::t('models', 'Course ID'),
 		    'controller' => Yii::t('models', 'Controller'),
+		    'start_at' => Yii::t('models', 'Start At'),
+		    'end_at' => Yii::t('models', 'End At'),
 		    'pos' => Yii::t('models', 'Pos'),
 		    'created_at' => Yii::t('models', 'Created At'),
 		    'deleted_at' => Yii::t('models', 'Deleted At')
@@ -117,20 +121,20 @@ class Semester extends ActiveRecord
 
 
 	/**
-	 * @return \app\models\query\CaseQuery|\yii\db\ActiveQuery
-	 */
-	public function getCases()
-	{
-		return $this->hasMany(\app\models\Case::class, ['semester_id' => 'id']);
-	}
-
-
-	/**
 	 * @return \app\models\query\CourseQuery|\yii\db\ActiveQuery
 	 */
 	public function getCourse()
 	{
 		return $this->hasOne(\app\models\Course::class, ['id' => 'course_id']);
+	}
+
+
+	/**
+	 * @return \app\models\query\TaskQuery|\yii\db\ActiveQuery
+	 */
+	public function getTasks()
+	{
+		return $this->hasMany(\app\models\Task::class, ['semester_id' => 'id']);
 	}
 
 

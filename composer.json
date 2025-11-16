@@ -26,7 +26,8 @@
         "carono/yii2-bower-asset": "^1.1",
         "carono/yii2-basic-env": "^1.0",
         "carono/yii2-validation-exception": "^1.0",
-        "yii2tech/ar-softdelete": "^1.0"
+        "yii2tech/ar-softdelete": "^1.0",
+        "carono/yii2-crud": "^0.2.5"
     },
     "require-dev": {
         "yiisoft/yii2-debug": "~2.1.0",

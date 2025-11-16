@@ -13,7 +13,8 @@ $config = [
         '@npm' => '@vendor/npm-asset',
     ],
     'modules' => [
-        'first' => ['class' => 'app\modules\first\Module']
+        'first' => ['class' => 'app\modules\first\Module'],
+        'admin' => ['class' => 'app\modules\admin\Module']
     ],
     'components' => array_merge(require __DIR__ . '/components.php', [
         'request' => [
@@ -54,6 +55,14 @@ if (YII_ENV_DEV) {
         'class' => 'yii\gii\Module',
         // uncomment the following to add your IP if you are not connecting from localhost.
         'allowedIPs' => ['127.0.0.1', '::1', '192.168.1.254'],
+        'generators' => [
+            'crud' => [
+                'class' => 'app\templates\crud\Generator',
+                'templates' => [
+                    'application' => '@app/templates/crud/default'
+                ]
+            ]
+        ]
     ];
 }
 

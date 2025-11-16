@@ -16,7 +16,7 @@ class SemesterSearch extends \app\models\Semester implements \app\interfaces\Sea
 	public function rules()
 	{
 		return [[['id', 'course_id', 'pos'], 'integer'],
-		[['name', 'controller', 'deleted_at', 'created_at'], 'safe']];
+		[['name', 'controller', 'start_at', 'end_at', 'deleted_at', 'created_at'], 'safe']];
 	}
 
 

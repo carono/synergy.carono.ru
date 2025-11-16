@@ -25,6 +25,13 @@ use yii\bootstrap5\NavBar;
                 ]
             ],
             [
+                'label' => 'Управление',
+                'url' => ['/admin/default/index'],
+                'options' => [
+                    'class' => 'nav-link btn btn-link',
+                ]
+            ],
+            [
                 'label' => 'О студенте',
                 'url' => ['/site/about'],
                 'options' => [

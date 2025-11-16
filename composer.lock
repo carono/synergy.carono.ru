@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "34061dbb488c9e68d1c5fe41bbfafcb9",
+    "content-hash": "a51321c9ffa7ca4c4a75363b7d6cc074",
     "packages": [
         {
             "name": "bower-asset/bootstrap",
@@ -267,6 +267,48 @@
             "time": "2024-05-04T16:18:27+00:00"
         },
         {
+            "name": "carono/yii2-crud",
+            "version": "0.2.5",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/carono/yii2-crud.git",
+                "reference": "24ce3b121df46c6c4849890c651442597cca8ee0"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/carono/yii2-crud/zipball/24ce3b121df46c6c4849890c651442597cca8ee0",
+                "reference": "24ce3b121df46c6c4849890c651442597cca8ee0",
+                "shasum": ""
+            },
+            "require": {
+                "carono/yii2-helpers": "@stable",
+                "php": ">=7.1",
+                "yiisoft/yii2": "~2.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "carono\\yii2crud\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Aleksandr Kasyanov",
+                    "email": "info@carono.ru",
+                    "homepage": "https://carono.ru"
+                }
+            ],
+            "support": {
+                "issues": "https://github.com/carono/yii2-crud/issues",
+                "source": "https://github.com/carono/yii2-crud/tree/0.2.5"
+            },
+            "time": "2025-10-02T10:41:47+00:00"
+        },
+        {
             "name": "carono/yii2-giix",
             "version": "0.4.8",
             "source": {
@@ -310,6 +352,51 @@
                 "source": "https://github.com/carono/yii2-giix/tree/0.4.8"
             },
             "time": "2023-02-18T08:37:28+00:00"
+        },
+        {
+            "name": "carono/yii2-helpers",
+            "version": "1.0.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/carono/yii2-helpers.git",
+                "reference": "486ae885aa14cce51930e90cd52b071760777119"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/carono/yii2-helpers/zipball/486ae885aa14cce51930e90cd52b071760777119",
+                "reference": "486ae885aa14cce51930e90cd52b071760777119",
+                "shasum": ""
+            },
+            "require": {
+                "yiisoft/yii2": "~2.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "carono\\yii2helpers\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Alexander Kasyanov",
+                    "email": "info@carono.ru",
+                    "homepage": "http://carono.ru"
+                }
+            ],
+            "description": "Helpers for yii2",
+            "keywords": [
+                "helpers",
+                "yii2"
+            ],
+            "support": {
+                "issues": "https://github.com/carono/yii2-helpers/issues",
+                "source": "https://github.com/carono/yii2-helpers/tree/1.0.2"
+            },
+            "time": "2025-07-15T08:13:50+00:00"
         },
         {
             "name": "carono/yii2-migrate",

@@ -15,7 +15,8 @@ class UserSearch extends \app\models\User implements \app\interfaces\Search
 {
 	public function rules()
 	{
-		return [];
+		return [[['id'], 'integer'],
+		[['username', 'password_hash', 'deleted_at'], 'safe']];
 	}
 
 

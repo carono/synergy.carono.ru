@@ -15,7 +15,7 @@ class SourceSearch extends \app\models\Source implements \app\interfaces\Search
 {
 	public function rules()
 	{
-		return [[['id', 'pos', 'case_id'], 'integer'],
+		return [[['id', 'pos', 'task_id'], 'integer'],
 		[['name', 'description', 'view', 'class', 'method', 'file'], 'safe']];
 	}
 

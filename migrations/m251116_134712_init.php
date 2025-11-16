@@ -26,11 +26,13 @@ class m251116_134712_init extends Migration
                 'name' => $this->string(),
                 'course_id' => $this->foreignKey('{{%course}}'),
                 'controller' => $this->string(),
+                'start_at' => $this->date(),
+                'end_at' => $this->date(),
                 'pos' => $this->integer()->notNull()->defaultValue(10),
                 'created_at' => $this->dateTime(),
                 'deleted_at' => $this->dateTime(),
             ],
-            '{{%case}}' => [
+            '{{%task}}' => [
                 'id' => $this->primaryKey(),
                 'name' => $this->string(),
                 'semester_id' => $this->foreignKey('{{%semester}}'),
@@ -43,7 +45,7 @@ class m251116_134712_init extends Migration
                 'description' => $this->string(),
                 'view' => $this->string(),
                 'pos' => $this->integer()->notNull()->defaultValue(10),
-                'case_id' => $this->foreignKey('{{%case}}'),
+                'task_id' => $this->foreignKey('{{%task}}'),
                 'class' => $this->string(),
                 'method' => $this->string(),
                 'file' => $this->string(),
