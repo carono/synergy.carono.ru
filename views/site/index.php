@@ -13,7 +13,7 @@ foreach (Course::find()->notDeleted()->orderBy(['pos' => SORT_ASC])->each() as $
     foreach ($course->getSemesters()->notDeleted()->each() as $semester) {
         $semesterItem = ['label' => $semester->name, 'items' => []];
         foreach ($semester->getTasks()->notDeleted()->each() as $task) {
-            $semesterItem['items'][] = ['label' => $task->name, 'url' => '/course/' . $course->module . '/' . $semester->controller . '/case1'];
+            $semesterItem['items'][] = ['label' => $task->name, 'url' => $task->getUrl('result')];
         }
         $courseItem['items'][] = $semesterItem;
     }
