@@ -65,7 +65,7 @@ class Case1Form extends Model
         // Суммируем отрицательные элементы между границами
         $sum = 0;
         for ($i = $min_index + 1; $i < $max_index; $i++) {
-            if (empty($array[$i])) {
+            if (empty($array[$i]) || $array[$i] > 0) {
                 continue;
             }
             $sum += $array[$i];

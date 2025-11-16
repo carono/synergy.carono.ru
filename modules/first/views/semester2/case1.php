@@ -16,7 +16,9 @@ echo Card::widget([
 
 echo Card::widget([
     'caption' => 'Комментарий исполнителя',
-    'content' => ''
+    'content' => nl2br('По условию задачи, считается, что на вход подается валидный одномерный числовой массив, для упрощения, не будем ужесточать валидацию и выводить ошибку, если в данных есть не только числа, а разобьем входную строку по всем не числовым символам.
+    
+    Так же нет понимания, какой именно отрезок суммировать, если минимум и максимум будут встречаться несколько раз, поэтому суммируем только первое вхождение')
 ]);
 
 Card::begin([
@@ -37,14 +39,13 @@ if ($model->input) {
     echo Html::tag('div', '<strong>Минимум: </strong>' . $model->min_value);
     echo Html::tag('div', '<strong>Максимум: </strong>' . $model->max_value);
     echo Html::tag('div', '<strong>Суммируемый отрезок: </strong>' . implode(', ', $model->between));
-    echo '<hr>';
     echo Html::tag('div', '<strong>Результат: </strong>' . $model->sum);
+
 }
-
 ActiveForm::end();
-
 ?>
-<p>Ниже приведен код решения задачи, исходный код: <?= CodeHelper::outGitHubLink(Case1Form::class) ?></p>
+<hr>
+<p>Ниже приведен код решения задачи</p>
 <?= CodeHelper::outSource(Case1Form::class, 'sumNegativeBetweenMinMax') ?>
 <?php
 
