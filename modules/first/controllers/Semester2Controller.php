@@ -3,7 +3,7 @@
 namespace app\modules\first\controllers;
 
 use app\controllers\RbacController;
-use app\modules\first\forms\Case1Form;
+use app\modules\first\case1\Case1;
 use Yii;
 
 /**
@@ -18,7 +18,8 @@ class Semester2Controller extends RbacController
      */
     public function actionCase1()
     {
-        $model = new Case1Form();
+        $model = new Case1();
+        $model->input = '12, -5, 7, -3, 0, 18, -4, 6, -1 -11, 4, -2, 9';
         if ($model->load(Yii::$app->request->post())) {
             $model->process();
         }
@@ -28,7 +29,7 @@ class Semester2Controller extends RbacController
 
     public function actionCase2()
     {
-        return $this->render('//layouts/in-progress');
+        return $this->render('case2');
     }
 
     public function actionCase3()
