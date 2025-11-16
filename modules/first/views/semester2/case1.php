@@ -1,16 +1,15 @@
 <?php
 /**
- * @var Case1Form $model
+ * @var \app\modules\first\case1\Case1 $model
  * @var View $this
  */
 
-use app\modules\first\forms\Case1Form;
-use app\widgets\Card;
 use app\helpers\CodeHelper;
+use app\modules\first\case1\Case1;
+use app\widgets\Card;
 use yii\helpers\Html;
 use yii\web\View;
 use yii\widgets\ActiveForm;
-
 
 
 echo Card::widget([
@@ -50,7 +49,7 @@ ActiveForm::end();
 ?>
 <hr>
 <p>Ниже приведен код решения задачи</p>
-<?= CodeHelper::outSource(Case1Form::class, 'sumNegativeBetweenMinMax') ?>
+<?= CodeHelper::outSource(Case1::class, 'sumNegativeBetweenMinMax') ?>
 <?php
 
 

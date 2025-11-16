@@ -1,10 +1,10 @@
 <?php
 
-namespace app\modules\first\forms;
+namespace app\modules\first\case1;
 
 use yii\base\Model;
 
-class Case1Form extends Model
+class Case1 extends Model
 {
     public $input;
     public $sum;
