@@ -22,20 +22,20 @@ echo Card::widget([
     'content' => $model->description
 ]);
 
+if (RoleManager::haveRole('admin')) {
+    echo Html::a('Добавить решение', ['/admin/source/create', 'task_id' => $model->id], ['class' => 'btn btn-primary']);
+}
+
 if (empty($sources)) {
     echo $this->render('//layouts/in-progress');
     return;
 }
-
 
 echo Card::widget([
     'caption' => 'Комментарий исполнителя',
     'content' => $model->comment
 ]);
 
-if (RoleManager::haveRole('admin')) {
-    echo Html::a('Добавить решение', ['/admin/source/create', 'task_id' => $model->id]);
-}
 
 foreach ($sources as $source) {
     Card::begin([
