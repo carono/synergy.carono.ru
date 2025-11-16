@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a51321c9ffa7ca4c4a75363b7d6cc074",
+    "content-hash": "0d4de8019502802504cbc321047b4fdd",
     "packages": [
         {
             "name": "bower-asset/bootstrap",
@@ -488,6 +488,53 @@
                 "source": "https://github.com/carono/yii2-rbac/tree/1.2.0"
             },
             "time": "2025-09-15T10:50:11+00:00"
+        },
+        {
+            "name": "carono/yii2-url-behavior",
+            "version": "1.0.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/carono/carono-yii2-url-behavior.git",
+                "reference": "606f4037cdec0156a0f792a1581391e171173b97"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/carono/carono-yii2-url-behavior/zipball/606f4037cdec0156a0f792a1581391e171173b97",
+                "reference": "606f4037cdec0156a0f792a1581391e171173b97",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^7.4 || 8.*",
+                "yiisoft/yii2": "^2.0"
+            },
+            "type": "yii2-extension",
+            "autoload": {
+                "psr-4": {
+                    "carono\\yii2\\behaviors\\": "src",
+                    "carono\\yii2\\behaviors\\components\\": "components"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Alexander Kasyanov",
+                    "email": "info@carono.ru",
+                    "homepage": "https://carono.ru"
+                }
+            ],
+            "description": "Yii2 behavior and URL rule component for dynamic URL generation based on model, action, user roles, and application context.",
+            "keywords": [
+                "extension",
+                "yii2"
+            ],
+            "support": {
+                "issues": "https://github.com/carono/carono-yii2-url-behavior/issues",
+                "source": "https://github.com/carono/carono-yii2-url-behavior/tree/1.0.2"
+            },
+            "time": "2025-09-16T09:53:29+00:00"
         },
         {
             "name": "carono/yii2-validation-exception",

@@ -18,6 +18,7 @@ use yii\widgets\ActiveForm;
 
     <?= $form->field($model, 'semester_id')->dropDownList(ArrayHelper::map(Semester::find()->notDeleted()->all(), 'id', 'name')) ?>
 
+    <?= $form->field($model, 'action')->textInput() ?>
     <?= $form->field($model, 'description')->textarea(['rows' => 6]) ?>
 
     <?= $form->field($model, 'comment')->textarea(['rows' => 6]) ?>

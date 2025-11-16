@@ -8,6 +8,7 @@ namespace app\fixtures;
 
 class AuthItemChildFixture extends \yii\test\ActiveFixture
 {
-	public $modelClass = 'app\models\AuthItemChild';
-	public $depends = [];
+    public $modelClass = 'app\models\AuthItemChild';
+    public $depends = [];
+    public $dataFile = '@app/fixtures/data/empty.php';
 }

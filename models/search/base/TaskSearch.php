@@ -16,7 +16,7 @@ class TaskSearch extends \app\models\Task implements \app\interfaces\Search
 	public function rules()
 	{
 		return [[['id', 'semester_id'], 'integer'],
-		[['name', 'description', 'comment'], 'safe']];
+		[['name', 'description', 'action', 'deleted_at', 'comment'], 'safe']];
 	}
 
 

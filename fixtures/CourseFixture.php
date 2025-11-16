@@ -9,5 +9,7 @@ namespace app\fixtures;
 class CourseFixture extends \yii\test\ActiveFixture
 {
 	public $modelClass = 'app\models\Course';
-	public $depends = [];
+	public $depends = [
+        UserFixture::class
+    ];
 }

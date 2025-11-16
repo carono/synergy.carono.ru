@@ -1,5 +1,6 @@
 <?php
 
+use app\models\Task;
 use yii\helpers\Html;
 use yii\helpers\Url;
 use yii\web\View;
@@ -11,21 +12,26 @@ use yii\web\View;
 if (Yii::$app->controller->module->id == 'basic') {
     return;
 }
-$items = extractSemesterLessons(Yii::$app->params['menu'], Yii::$app->controller->module->getUniqueId());
+$items = Task::find()->notDeleted()
+    ->joinWith(['semester.course'])
+    ->andWhere(['module' => Yii::$app->controller->module->id])
+    ->andWhere(['controller' => Yii::$app->controller->id])
+    ->all();
+
 $prev = null;
 $current = null;
 $next = null;
 foreach ($items as $i => $item) {
-    if (Url::to($item['url']) == Yii::$app->request->url) {
+    if (Url::to($item->getUrl('result')) == Yii::$app->request->url) {
         $prev = $items[$i - 1] ?? null;
         $current = $item;
         $next = $items[$i + 1] ?? null;
         break;
     }
 }
-$prev = $prev ? Html::a($prev['label'], $prev['url'], ['class' => 'btn btn-outline-primary']) : null;
-$current = $current ? Html::tag('div', Html::tag('h2', $current['label'])) : '';
-$next = $next ? Html::a($next['label'], $next['url'], ['class' => 'btn btn-primary']) : null;
+$prev = $prev ? Html::a($prev->name, $prev->getUrl('result'), ['class' => 'btn btn-outline-primary']) : null;
+$current = $current ? Html::tag('div', Html::tag('h2', $current->name)) : '';
+$next = $next ? Html::a($next->name, $next->getUrl('result'), ['class' => 'btn btn-primary']) : null;
 
 ?>
 
@@ -36,24 +42,3 @@ $next = $next ? Html::a($next['label'], $next['url'], ['class' => 'btn btn-prima
         <?= $next ?>
     </div>
 </div>
-
-<?php
-
-function extractSemesterLessons($menu, $module_id)
-{
-
-    $result = [];
-    foreach ($menu as $item) {
-        if (isset($item['url']) && str_contains($item['url'], $module_id)) {
-            $result[] = $item;
-        }
-        if (isset($item['items'])) {
-            $result = array_merge($result, extractSemesterLessons($item['items'], $module_id));
-        }
-    }
-
-    return $result;
-}
-
-?>
-

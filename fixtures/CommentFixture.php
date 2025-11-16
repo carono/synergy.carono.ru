@@ -8,6 +8,9 @@ namespace app\fixtures;
 
 class CommentFixture extends \yii\test\ActiveFixture
 {
-	public $modelClass = 'app\models\Comment';
-	public $depends = [];
+    public $modelClass = 'app\models\Comment';
+    public $depends = [
+        SourceFixture::class,
+        UserFixture::class,
+    ];
 }

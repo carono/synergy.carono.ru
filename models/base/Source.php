@@ -22,6 +22,7 @@ use yii\helpers\ArrayHelper;
  * @property string $class
  * @property string $method
  * @property string $file
+ * @property string $deleted_at
  *
  * @property \app\models\Comment[] $comments
  * @property \app\models\Task $task
@@ -31,15 +32,29 @@ class Source extends ActiveRecord
 	protected $_relationClasses = ['task_id' => 'app\models\Task'];
 
 
+	public function behaviors()
+	{
+		return [    'softDeleteBehavior' => [
+		        'class' => 'yii2tech\ar\softdelete\SoftDeleteBehavior',
+		        'softDeleteAttributeValues' => [
+		            'deleted_at' => new \yii\db\Expression('NOW()'),
+		        ],
+		        'restoreAttributeValues'=> ['deleted_at' => null],
+		        'replaceRegularDelete' => true
+		    ]];
+	}
+
+
 	/**
 	 * @inheritdoc
 	 */
 	public function rules()
 	{
 		return [
-		[['name', 'description', 'view', 'task_id', 'class', 'method', 'file'], 'default', 'value' => null],
+		[['name', 'description', 'view', 'task_id', 'class', 'method', 'file', 'deleted_at'], 'default', 'value' => null],
 		      [['pos'], 'default', 'value' => 10],
 		      [['pos', 'task_id'], 'integer'],
+		      [['deleted_at'], 'safe'],
 		      [['name', 'description', 'view', 'class', 'method', 'file'], 'string', 'max' => 255],
 		      [['task_id'], 'exist', 'skipOnError' => true, 'targetClass' => \app\models\Task::class, 'targetAttribute' => ['task_id' => 'id']],
 		      [['name', 'description', 'view', 'class', 'method', 'file'], 'trim']
@@ -85,7 +100,8 @@ class Source extends ActiveRecord
 		    'task_id' => Yii::t('models', 'Task ID'),
 		    'class' => Yii::t('models', 'Class'),
 		    'method' => Yii::t('models', 'Method'),
-		    'file' => Yii::t('models', 'File')
+		    'file' => Yii::t('models', 'File'),
+		    'deleted_at' => Yii::t('models', 'Deleted At')
 		];
 	}
 

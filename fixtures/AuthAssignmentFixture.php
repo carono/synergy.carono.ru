@@ -8,6 +8,9 @@ namespace app\fixtures;
 
 class AuthAssignmentFixture extends \yii\test\ActiveFixture
 {
-	public $modelClass = 'app\models\AuthAssignment';
-	public $depends = [];
+    public $modelClass = 'app\models\AuthAssignment';
+    public $depends = [
+        AuthItemFixture::class,
+        UserFixture::class,
+    ];
 }

@@ -8,6 +8,8 @@ namespace app\fixtures;
 
 class TaskFixture extends \yii\test\ActiveFixture
 {
-	public $modelClass = 'app\models\Task';
-	public $depends = [];
+    public $modelClass = 'app\models\Task';
+    public $depends = [
+        SemesterFixture::class
+    ];
 }

@@ -22,9 +22,18 @@ class TaskQuery extends ActiveQuery
 	/**
 	 * @return $this
 	 */
+	public function notDeleted()
+	{
+		return $this->andWhere(['{{%task}}.[[deleted_at]]' => null]);
+	}
+
+
+	/**
+	 * @return $this
+	 */
 	public function available()
 	{
-		return $this;
+		return $this->notDeleted();
 	}
 
 

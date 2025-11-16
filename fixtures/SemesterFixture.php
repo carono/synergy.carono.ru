@@ -8,6 +8,8 @@ namespace app\fixtures;
 
 class SemesterFixture extends \yii\test\ActiveFixture
 {
-	public $modelClass = 'app\models\Semester';
-	public $depends = [];
+    public $modelClass = 'app\models\Semester';
+    public $depends = [
+        CourseFixture::class
+    ];
 }

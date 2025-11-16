@@ -8,6 +8,7 @@ namespace app\fixtures;
 
 class AuthRuleFixture extends \yii\test\ActiveFixture
 {
-	public $modelClass = 'app\models\AuthRule';
-	public $depends = [];
+    public $modelClass = 'app\models\AuthRule';
+    public $depends = [];
+    public $dataFile = '@app/fixtures/data/empty.php';
 }

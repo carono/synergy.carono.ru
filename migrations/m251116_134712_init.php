@@ -37,6 +37,8 @@ class m251116_134712_init extends Migration
                 'name' => $this->string(),
                 'semester_id' => $this->foreignKey('{{%semester}}'),
                 'description' => $this->text(),
+                'action' => $this->string(),
+                'deleted_at' => $this->dateTime(),
                 'comment' => $this->text(),
             ],
             '{{%source}}' => [
@@ -49,6 +51,7 @@ class m251116_134712_init extends Migration
                 'class' => $this->string(),
                 'method' => $this->string(),
                 'file' => $this->string(),
+                'deleted_at' => $this->dateTime(),
             ],
             '{{%comment}}' => [
                 'id' => $this->primaryKey(),

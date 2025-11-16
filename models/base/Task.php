@@ -17,6 +17,8 @@ use yii\helpers\ArrayHelper;
  * @property string $name
  * @property integer $semester_id
  * @property string $description
+ * @property string $action
+ * @property string $deleted_at
  * @property string $comment
  *
  * @property \app\models\Semester $semester
@@ -27,18 +29,32 @@ class Task extends ActiveRecord
 	protected $_relationClasses = ['semester_id' => 'app\models\Semester'];
 
 
+	public function behaviors()
+	{
+		return [    'softDeleteBehavior' => [
+		        'class' => 'yii2tech\ar\softdelete\SoftDeleteBehavior',
+		        'softDeleteAttributeValues' => [
+		            'deleted_at' => new \yii\db\Expression('NOW()'),
+		        ],
+		        'restoreAttributeValues'=> ['deleted_at' => null],
+		        'replaceRegularDelete' => true
+		    ]];
+	}
+
+
 	/**
 	 * @inheritdoc
 	 */
 	public function rules()
 	{
 		return [
-		[['name', 'semester_id', 'description', 'comment'], 'default', 'value' => null],
+		[['name', 'semester_id', 'description', 'action', 'deleted_at', 'comment'], 'default', 'value' => null],
 		      [['semester_id'], 'integer'],
 		      [['description', 'comment'], 'string'],
-		      [['name'], 'string', 'max' => 255],
+		      [['deleted_at'], 'safe'],
+		      [['name', 'action'], 'string', 'max' => 255],
 		      [['semester_id'], 'exist', 'skipOnError' => true, 'targetClass' => \app\models\Semester::class, 'targetAttribute' => ['semester_id' => 'id']],
-		      [['name', 'description', 'comment'], 'trim']
+		      [['name', 'description', 'action', 'comment'], 'trim']
 		];
 	}
 
@@ -77,6 +93,8 @@ class Task extends ActiveRecord
 		    'name' => Yii::t('models', 'Name'),
 		    'semester_id' => Yii::t('models', 'Semester ID'),
 		    'description' => Yii::t('models', 'Description'),
+		    'action' => Yii::t('models', 'Action'),
+		    'deleted_at' => Yii::t('models', 'Deleted At'),
 		    'comment' => Yii::t('models', 'Comment')
 		];
 	}

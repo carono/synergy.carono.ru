@@ -8,6 +8,8 @@ namespace app\fixtures;
 
 class SourceFixture extends \yii\test\ActiveFixture
 {
-	public $modelClass = 'app\models\Source';
-	public $depends = [];
+    public $modelClass = 'app\models\Source';
+    public $depends = [
+        TaskFixture::class
+    ];
 }
