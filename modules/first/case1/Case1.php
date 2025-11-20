@@ -35,7 +35,7 @@ class Case1 extends Model
         $array = preg_split('/[^\d.-]+/', $input, -1, PREG_SPLIT_NO_EMPTY);
         $size = count($array);
 
-        $array = array_filter($array, 'is_numeric');
+        $array = array_values(array_filter($array, 'is_numeric'));
 
         if (empty($array)) {
             return [];
@@ -49,9 +49,6 @@ class Case1 extends Model
         $between = [];
 
         for ($i = 1; $i < $size; $i++) {
-            if (empty($array[$i])) {
-                continue;
-            }
             if ($array[$i] < $min_value) {
                 $min_value = $array[$i];
                 $min_index = $i;
@@ -70,7 +67,7 @@ class Case1 extends Model
         // Суммируем отрицательные элементы между границами
         $sum = 0;
         for ($i = $min_index + 1; $i < $max_index; $i++) {
-            if (empty($array[$i]) || $array[$i] > 0) {
+            if ($array[$i] > 0) {
                 continue;
             }
             $sum += $array[$i];
