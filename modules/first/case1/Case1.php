@@ -33,14 +33,13 @@ class Case1 extends Model
     public function sumNegativeBetweenMinMax($input)
     {
         $array = preg_split('/[^\d.-]+/', $input, -1, PREG_SPLIT_NO_EMPTY);
-        $size = count($array);
-
         $array = array_values(array_filter($array, 'is_numeric'));
 
         if (empty($array)) {
             return [];
         }
 
+        $size = count($array);
         // Находим индексы минимального и максимального элементов
         $min_index = 0;
         $max_index = 0;
