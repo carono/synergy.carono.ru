@@ -30,9 +30,9 @@ class Case1 extends Model
         ];
     }
 
-    public function sumNegativeBetweenMinMax()
+    public function sumNegativeBetweenMinMax($input)
     {
-        $array = preg_split('/[^\d.-]+/', $this->input, -1, PREG_SPLIT_NO_EMPTY);
+        $array = preg_split('/[^\d.-]+/', $input, -1, PREG_SPLIT_NO_EMPTY);
         $size = count($array);
 
         $array = array_filter($array, 'is_numeric');
@@ -90,7 +90,7 @@ class Case1 extends Model
 
     public function process()
     {
-        $data = $this->sumNegativeBetweenMinMax();
+        $data = $this->sumNegativeBetweenMinMax($this->input);
         $this->setAttributes($data, false);
     }
 }
