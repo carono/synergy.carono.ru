@@ -148,3 +148,7 @@ code {
 .section {
     margin-bottom: 30px;
 }
+
+.next-case, .prev-case {
+    width: 20%;
+}

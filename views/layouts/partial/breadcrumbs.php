@@ -29,9 +29,9 @@ foreach ($items as $i => $item) {
         break;
     }
 }
-$prev = $prev ? Html::a($prev->name, $prev->getUrl('result'), ['class' => 'btn btn-outline-primary']) : null;
+$prev = $prev ? Html::a($prev->name, $prev->getUrl('result'), ['class' => 'btn btn-outline-primary prev-case']) : null;
 $current = $current ? Html::tag('div', Html::tag('h2', $current->name)) : '';
-$next = $next ? Html::a($next->name, $next->getUrl('result'), ['class' => 'btn btn-primary']) : null;
+$next = $next ? Html::a($next->name, $next->getUrl('result'), ['class' => 'btn btn-primary next-case']) : null;
 
 ?>
 
