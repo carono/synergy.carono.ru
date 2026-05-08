@@ -35,3 +35,11 @@ tests/_support/_generated
 /yii.bat
 #vagrant folder
 /.vagrant
+
+# LMS parser runtime files
+/lms-parser/downloads/
+/lms-parser/cookies.json
+/lms-parser/state.json
+/lms-parser/.env
+/lms-parser/vendor/
+/logs/

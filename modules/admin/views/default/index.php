@@ -11,5 +11,7 @@ echo Menu::widget([
         ['label' => 'Кейс-задачи', 'url' => ['/admin/task/index']],
         ['label' => 'Блоки', 'url' => ['/admin/source/index']],
         ['label' => 'Комментарии', 'url' => ['/admin/comment/index']],
+        ['label' => 'LMS — дисциплины', 'url' => ['/admin/lms-discipline/index']],
+        ['label' => 'LMS — видео', 'url' => ['/admin/lms-video/index']],
     ]
 ]);

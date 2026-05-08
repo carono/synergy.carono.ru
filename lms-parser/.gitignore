@@ -1,0 +1,7 @@
+vendor/
+composer.lock
+.env
+downloads/
+state.json
+cookies.json
+*.log

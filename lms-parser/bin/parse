@@ -1,0 +1,113 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Carono\LmsParser\Client;
+use Carono\LmsParser\Downloader;
+use Carono\LmsParser\Logger;
+use Carono\LmsParser\Parser;
+use Carono\LmsParser\Runner;
+use Carono\LmsParser\Scorm;
+use Carono\LmsParser\State;
+
+$root = dirname(__DIR__);
+require $root.'/vendor/autoload.php';
+
+// .env
+$envPath = $root.'/.env';
+if (is_file($envPath)) {
+    foreach (file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (str_starts_with(ltrim($line), '#')) continue;
+        if (!str_contains($line, '=')) continue;
+        [$k, $v] = explode('=', $line, 2);
+        $k = trim($k);
+        $v = trim($v, " \t\n\r\0\x0B\"'");
+        if ($k !== '' && getenv($k) === false) {
+            putenv("$k=$v");
+            $_ENV[$k] = $v;
+        }
+    }
+}
+
+// CLI args
+$opts = getopt('', [
+    'semester:', 'discover-only', 'no-watch', 'minutes:',
+    'max-disciplines:', 'max-lessons:', 'discipline:', 'help',
+]);
+if (isset($opts['help'])) {
+    echo "Использование: ./bin/parse [--semester=N] [--discover-only] [--no-watch] [--minutes=N]\n";
+    echo "  --semester=N             обработать конкретный семестр (по умолчанию — текущий)\n";
+    echo "  --discover-only          только вывести структуру, ничего не качать\n";
+    echo "  --no-watch               качать видео, но не отмечать как просмотренные\n";
+    echo "  --minutes=N              сколько 'просмотренных' минут отправлять в SCORM (default 30)\n";
+    echo "  --max-disciplines=N      обработать не более N дисциплин (для тестов)\n";
+    echo "  --max-lessons=N          обработать не более N уроков в каждой дисциплине\n";
+    echo "  --discipline=str|id      обработать только дисциплины, чей title содержит str (или с указанным id)\n";
+    exit(0);
+}
+
+$login = (string)(getenv('LMS_LOGIN') ?: '');
+$password = (string)(getenv('LMS_PASSWORD') ?: '');
+$outputDir = (string)(getenv('LMS_OUTPUT_DIR') ?: $root.'/downloads');
+$userAgent = (string)(getenv('LMS_USER_AGENT') ?: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
+$watchMinutes = (int)($opts['minutes'] ?? getenv('LMS_REQUIRED_WATCH_MINUTES') ?: 30);
+$emulateWatch = !isset($opts['no-watch']);
+$semesterFilter = isset($opts['semester']) ? (int)$opts['semester'] : null;
+
+if ($login === '' || $password === '') {
+    fwrite(STDERR, "Не задан LMS_LOGIN / LMS_PASSWORD (положите .env рядом с composer.json или экспортируйте в окружение)\n");
+    exit(2);
+}
+
+if (!str_starts_with($outputDir, '/') && !preg_match('~^[A-Za-z]:~', $outputDir)) {
+    $outputDir = $root.'/'.ltrim($outputDir, './');
+}
+
+$logger = new Logger();
+$logger->info("Output:  $outputDir");
+$logger->info("User:    $login");
+$logger->info("Watch:   {$watchMinutes} мин".($emulateWatch ? '' : ' (только скачивание)'));
+if ($semesterFilter !== null) {
+    $logger->info("Семестр: $semesterFilter");
+}
+
+$cookieFile = $root.'/cookies.json';
+$stateFile = $root.'/state.json';
+
+$client = new Client($login, $password, $cookieFile, $userAgent, $logger);
+$parser = new Parser();
+$downloader = new Downloader($logger, $userAgent);
+$scorm = new Scorm($client, $logger);
+$state = new State($stateFile);
+
+if (isset($opts['discover-only'])) {
+    $client->login();
+    $html = $client->getHtml('/student/up');
+    $semesters = $parser->semesters($html);
+
+    foreach ($semesters as $s) {
+        $mark = $s['current'] ? ' (текущий)' : '';
+        echo "\nСеместр {$s['number']}{$mark} — ".count($s['disciplines'])." дисциплин\n";
+        foreach ($s['disciplines'] as $d) {
+            echo "  • [{$d['id']}] {$d['title']}\n";
+            $state->setDisciplineMeta((string)$d['id'], [
+                'title' => $d['title'],
+                'semester' => $s['number'],
+                'slug' => \Carono\LmsParser\Slug::make($d['title']),
+            ]);
+        }
+    }
+    exit(0);
+}
+
+$maxDisciplines = isset($opts['max-disciplines']) ? (int)$opts['max-disciplines'] : null;
+$maxLessons = isset($opts['max-lessons']) ? (int)$opts['max-lessons'] : null;
+$disciplineFilter = isset($opts['discipline']) ? (string)$opts['discipline'] : null;
+
+$runner = new Runner(
+    $client, $parser, $downloader, $scorm, $state, $logger,
+    $outputDir, $watchMinutes, $emulateWatch,
+    $maxDisciplines, $maxLessons, $disciplineFilter,
+);
+$runner->run($semesterFilter);
