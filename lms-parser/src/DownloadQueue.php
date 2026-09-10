@@ -38,6 +38,15 @@ final class DownloadQueue
     /** Сколько раз возвращать задание в очередь из-за 403, прежде чем сдаться. */
     private const AUTH_RETRIES = 2;
 
+    /**
+     * Сколько одновременных закачек терпит конкретный хост.
+     *
+     * lms.synergy.ru сидит за DDoS-Guard и с шестого-седьмого соединения начинает отдавать
+     * челлендж вместо файла — воркеры падали с 403, а родитель на каждый такой ответ шёл
+     * обновлять сессию, хотя дело было не в ней.
+     */
+    private const HOST_LIMITS = ['lms.synergy.ru' => 3];
+
     private bool $stopping = false;
     /** Пока true, новые закачки не стартуют — на время обновления сессии. */
     private bool $paused = false;
@@ -110,7 +119,28 @@ final class DownloadQueue
             }
 
             while ($queue !== [] && !$this->stopping && !$this->paused && count($running) < $this->concurrency) {
-                $job = array_shift($queue);
+                // Не все хосты терпят двенадцать соединений: сама lms.synergy.ru за DDoS-Guard
+                // отвечает 403 уже на пятом-шестом и тянет за собой лишние обновления сессии.
+                // CDN такого не замечает, поэтому лимит адресный, а не общий.
+                $hostRunning = [];
+                foreach ($running as $active) {
+                    $hostRunning[$active['host']] = ($hostRunning[$active['host']] ?? 0) + 1;
+                }
+                $pick = null;
+                foreach ($queue as $k => $candidate) {
+                    $host = self::hostOf($candidate['url']);
+                    if (($hostRunning[$host] ?? 0) < $this->limitFor($host)) {
+                        $pick = $k;
+                        break;
+                    }
+                }
+                if ($pick === null) {
+                    break;
+                }
+                $job = $queue[$pick];
+                unset($queue[$pick]);
+                $queue = array_values($queue);
+
                 $handle = $this->start($job);
                 if ($handle === null) {
                     $results[$job['dest']] = false;
@@ -263,7 +293,13 @@ final class DownloadQueue
         fclose($pipes[0]);
         stream_set_blocking($pipes[1], false);
 
-        return ['proc' => $proc, 'stdout' => $pipes[1], 'buffer' => '', 'job' => $job];
+        return [
+            'proc' => $proc,
+            'stdout' => $pipes[1],
+            'buffer' => '',
+            'job' => $job,
+            'host' => self::hostOf($job['url']),
+        ];
     }
 
     /** @param array{stdout:resource, buffer:string} $handle */
@@ -350,6 +386,16 @@ final class DownloadQueue
             $bytes += $this->sizeOf($job['dest']);
         }
         return $bytes;
+    }
+
+    private static function hostOf(string $url): string
+    {
+        return strtolower((string)parse_url($url, PHP_URL_HOST));
+    }
+
+    private function limitFor(string $host): int
+    {
+        return min($this->concurrency, self::HOST_LIMITS[$host] ?? $this->concurrency);
     }
 
     /** Похоже ли, что воркер упал из-за протухшей сессии, а не из-за самого файла. */
