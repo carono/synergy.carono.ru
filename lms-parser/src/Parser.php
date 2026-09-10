@@ -254,6 +254,73 @@ final class Parser
         return $context;
     }
 
+    /** Расширения, которые считаем скачиваемым учебным файлом. */
+    private const FILE_EXTENSIONS = [
+        'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
+        'zip', 'rar', '7z', 'ipynb', 'csv', 'txt', 'rtf', 'mp3', 'djvu',
+    ];
+
+    /**
+     * Всё, что можно забрать из материала урока.
+     *
+     * Видеоурок отдаёт `<video>`/`<source>`, а конспекты, практические задания и
+     * дополнительные материалы — страницу с одной ссылкой: либо на файл в CDN
+     * (`v.lscdn.ru/....pdf`, `e-biblio.ru/....zip`), либо на внешний ресурс
+     * (ноутбук Google Colab). Файлы качаем, внешние ссылки только записываем.
+     *
+     * @return array<int, array{kind:string, url:string, ext:?string}>
+     */
+    public function materials(string $html): array
+    {
+        $materials = [];
+        $seen = [];
+
+        $add = static function (string $kind, string $url, ?string $ext) use (&$materials, &$seen): void {
+            $url = html_entity_decode(trim($url), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if ($url === '' || isset($seen[$url]) || str_starts_with($url, '#')) {
+                return;
+            }
+            $seen[$url] = true;
+            $materials[] = ['kind' => $kind, 'url' => $url, 'ext' => $ext];
+        };
+
+        if (($video = $this->videoUrl($html)) !== null) {
+            $ext = strtolower(pathinfo((string)parse_url($video, PHP_URL_PATH), PATHINFO_EXTENSION));
+            $add('video', $video, $ext !== '' ? $ext : 'mp4');
+        }
+
+        // Разбираем только <body>: в <head> лежат стили и скрипты самой LMS
+        $body = $html;
+        $bodyStart = stripos($html, '<body');
+        if ($bodyStart !== false) {
+            $body = substr($html, $bodyStart);
+        }
+        $body = (string)preg_replace('~(?s)<script.*?</script>~i', '', $body);
+
+        $extensions = implode('|', self::FILE_EXTENSIONS);
+        if (preg_match_all('~(?:href|src)="([^"]+\.('.$extensions.'))(?:\?[^"]*)?"~i', $body, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) {
+                $add('file', $m[1], strtolower($m[2]));
+            }
+        }
+
+        // Остальные внешние ссылки — Colab и прочие ресурсы вне LMS
+        if (preg_match_all('~href="(https?://[^"]+)"~i', $body, $mm)) {
+            foreach ($mm[1] as $url) {
+                if (isset($seen[html_entity_decode(trim($url), ENT_QUOTES | ENT_HTML5, 'UTF-8')])) {
+                    continue;
+                }
+                $host = (string)parse_url($url, PHP_URL_HOST);
+                if ($host === '' || str_contains($host, 'lms.synergy.ru')) {
+                    continue;
+                }
+                $add('link', $url, null);
+            }
+        }
+
+        return $materials;
+    }
+
     /**
      * Из HTML iframe-контента вытаскивает прямую ссылку на видео.
      */

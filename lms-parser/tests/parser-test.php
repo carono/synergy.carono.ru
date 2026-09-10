@@ -86,5 +86,32 @@ check('урок 2: причина про тест',
 check('вложенные уроки заблокированной темы тоже locked',
     array_values(array_unique(array_column(array_slice($lessons, 1), 'locked'))), [true]);
 
+// --- materials(): видео, файлы и внешние ссылки ---
+$video = $parser->materials('<body><video><source src="https://cdn.example/x/y.mp4?t=1" type="video/mp4"></video></body>');
+check('materials(): видео найдено', count($video), 1);
+check('materials(): вид — video', $video[0]['kind'] ?? null, 'video');
+check('materials(): расширение видео', $video[0]['ext'] ?? null, 'mp4');
+
+$pdf = $parser->materials('<body><a href="https://cdn.example/fip/k_01.pdf">Конспект</a></body>');
+check('materials(): pdf как файл', $pdf[0]['kind'] ?? null, 'file');
+check('materials(): расширение pdf', $pdf[0]['ext'] ?? null, 'pdf');
+
+$zip = $parser->materials('<body><a href="https://e-biblio.example/book/1_1.zip">Доп</a></body>');
+check('materials(): zip как файл', $zip[0]['kind'] ?? null, 'file');
+
+// Скрипты в <head> не должны давать ложных срабатываний
+$colab = $parser->materials(
+    '<html><head><script>var a="/fake.pdf";</script></head>'
+    .'<body><p><a href="https://colab.research.google.com/drive/1Qw" target="_blank">Смотреть конспект</a></p></body></html>'
+);
+check('materials(): внешняя ссылка одна', count($colab), 1);
+check('materials(): вид — link', $colab[0]['kind'] ?? null, 'link');
+check('materials(): скрипт из <head> не попал в файлы',
+    array_column($colab, 'ext'), [null]);
+
+check('materials(): ссылки внутрь LMS игнорируются',
+    $parser->materials('<body><a href="https://lms.synergy.ru/student/up">Обучение</a></body>'), []);
+check('materials(): пустая страница', $parser->materials('<body><p>&nbsp;</p></body>'), []);
+
 printf("\nПроверок пройдено: %d, провалено: %d\n", $passed, $failed);
 exit($failed === 0 ? 0 : 1);

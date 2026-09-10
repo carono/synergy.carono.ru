@@ -35,7 +35,7 @@ if (is_file($envPath)) {
 $opts = getopt('', [
     'semester:', 'discover-only', 'no-watch', 'minutes:',
     'max-disciplines:', 'max-lessons:', 'discipline:',
-    'retake::', 'no-retake', 'tabs', 'help',
+    'retake::', 'no-retake', 'tabs', 'redo', 'help',
 ]);
 if (isset($opts['help'])) {
     echo "Использование: ./bin/parse [--semester=N] [--discover-only] [--no-watch] [--minutes=N]\n";
@@ -52,6 +52,8 @@ if (isset($opts['help'])) {
     echo "                           off   — игнорировать, работать только с «Текущими»\n";
     echo "  --no-retake              то же, что --retake=off\n";
     echo "  --tabs                   вместе с --discover-only: открыть каждую дисциплину и показать её вкладки материалов\n";
+    echo "  --redo                   не доверять отметкам done в state.json и открыть уроки заново\n";
+    echo "                           (нужно, если прошлый прогон забирал не все типы материалов; файлы на диске не перекачиваются)\n";
     exit(0);
 }
 
@@ -180,5 +182,6 @@ $runner = new Runner(
     $client, $parser, $downloader, $scorm, $state, $logger,
     $outputDir, $watchMinutes, $emulateWatch,
     $maxDisciplines, $maxLessons, $disciplineFilter, $retakeMode,
+    isset($opts['redo']),
 );
 $runner->run($semesterFilter);

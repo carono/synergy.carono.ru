@@ -27,6 +27,7 @@ final class Runner
         private readonly ?int $maxLessons = null,
         private readonly ?string $disciplineFilter = null,
         private readonly string $retakeMode = self::RETAKE_AUTO,
+        private readonly bool $redo = false,
     ) {
     }
 
@@ -218,7 +219,10 @@ final class Runner
                 continue;
             }
 
-            if ($this->state->isLessonDone($id, $lesson['resourceId'])) {
+            // --redo нужен после расширения набора материалов: уроки, отмеченные done
+            // прошлым прогоном, могли отдать только видео (или вообще ничего).
+            // Повторный проход дешёвый — уже лежащие на диске файлы Downloader не качает заново.
+            if (!$this->redo && $this->state->isLessonDone($id, $lesson['resourceId'])) {
                 $this->logger->ok("[$code] Уже обработан ранее");
                 $disciplineDoneCount++;
                 continue;
@@ -342,28 +346,51 @@ final class Runner
             return false;
         }
 
-        $videoUrl = $this->parser->videoUrl($itemHtml);
-        if ($videoUrl === null) {
-            $this->logger->warn("[$code] Нет видео в материале (текст/презентация/тест)");
+        // 3. Забираем всё, что есть в материале: видео, файлы (pdf/zip/...) и внешние ссылки
+        $materials = $this->parser->materials($itemHtml);
+        if ($materials === []) {
+            $this->logger->warn("[$code] В материале нечего забрать (пустая страница или тест)");
             $stats['skipped']++;
-            // Всё равно отметим просмотренным, чтобы разблокировать следующий урок
             if ($this->emulateWatch) {
                 $this->markWatched($code, $ctx, $referer, $watchMinutes);
             }
             return true;
         }
 
-        // 3. Скачиваем видео
-        $ext = pathinfo(parse_url($videoUrl, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION) ?: 'mp4';
-        $filename = sprintf('%s.%s', Slug::make($code.' '.$title), $ext);
-        $destPath = $disciplineDir.'/'.$filename;
+        $base = Slug::make($code.' '.$title);
+        $saved = 0;
+        $failedHere = 0;
+        $fileIndex = 0;
 
-        $ok = $this->downloader->download($videoUrl, $destPath);
-        if (!$ok) {
-            $stats['failed']++;
+        foreach ($materials as $material) {
+            if ($material['kind'] === 'link') {
+                $this->saveLink($disciplineDir, $code, $title, $material['url']);
+                $this->logger->ok("[$code] Внешняя ссылка записана в materials.md");
+                $saved++;
+                continue;
+            }
+
+            // Несколько файлов в одном материале — нумеруем, чтобы не перетирать друг друга
+            $suffix = $fileIndex === 0 ? '' : '_'.$fileIndex;
+            $fileIndex++;
+            $ext = $material['ext'] ?: ($material['kind'] === 'video' ? 'mp4' : 'bin');
+            $destPath = sprintf('%s/%s%s.%s', $disciplineDir, $base, $suffix, $ext);
+
+            if ($this->downloader->download($material['url'], $destPath)) {
+                $stats['downloaded']++;
+                $saved++;
+            } else {
+                $failedHere++;
+            }
+        }
+
+        if ($saved === 0) {
+            $stats['failed'] += $failedHere;
             return false;
         }
-        $stats['downloaded']++;
+        if ($failedHere > 0) {
+            $stats['failed'] += $failedHere;
+        }
 
         // 4. Эмулируем просмотр и завершение, чтобы разблокировать следующий урок
         if ($this->emulateWatch) {
@@ -371,6 +398,29 @@ final class Runner
         }
 
         return true;
+    }
+
+    /**
+     * Внешние ссылки (ноутбуки Colab и прочее вне LMS) скачать нельзя — складываем
+     * их в materials.md рядом с файлами дисциплины, чтобы набор был полным.
+     */
+    private function saveLink(string $disciplineDir, string $code, string $title, string $url): void
+    {
+        @mkdir($disciplineDir, 0o775, true);
+        $path = $disciplineDir.'/materials.md';
+
+        $line = sprintf('- [%s] %s — %s', $code, $title, $url);
+        if (is_file($path) && str_contains((string)file_get_contents($path), $url)) {
+            return;
+        }
+        if (!is_file($path)) {
+            file_put_contents($path, "# Внешние материалы
+
+Ссылки вне LMS — скачать нельзя, открывать вручную.
+
+");
+        }
+        file_put_contents($path, $line.PHP_EOL, FILE_APPEND);
     }
 
     private function markWatched(string $code, array $ctx, string $referer, int $minutes): void
