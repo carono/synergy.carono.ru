@@ -77,8 +77,10 @@ try {
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 90000 });
 
   // Челлендж перезагружает страницу сам; ждём, пока в title перестанет быть DDoS-Guard.
+  // Ждём щедро: скрипт вызывается и посреди прогона, когда 20 закачек занимают канал,
+  // и челлендж, проходивший вживую за 80 с, на загруженной сети не успевал за 90.
   let passed = false;
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 100; i++) {
     if (!/ddos.?guard/i.test(await page.title())) {
       passed = true;
       break;
@@ -86,7 +88,10 @@ try {
     await page.waitForTimeout(3000);
   }
   if (!passed) {
-    console.error('DDoS-Guard не пропустил за 90 с. Попробуйте запустить без --headless (нужен DISPLAY).');
+    console.error(
+      'DDoS-Guard не пропустил за 300 с. Возможные причины: запущено с --headless '
+      + '(такое окно он не пускает, нужен DISPLAY) либо канал занят и страница не грузится.'
+    );
     process.exit(4);
   }
 
