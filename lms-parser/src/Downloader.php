@@ -9,6 +9,14 @@ use GuzzleHttp\RequestOptions;
 
 final class Downloader
 {
+    /**
+     * CDN Synergy (`v.lscdn.ru`) регулярно обрывает выдачу на середине файла
+     * (`cURL error 18: transfer closed`) — на длинных видео это ловится в каждом
+     * десятом-двадцатом уроке. Файл при этом сохраняется как `.part`, поэтому
+     * повтор продолжает с того же места, а не начинает заново.
+     */
+    private const MAX_ATTEMPTS = 5;
+
     private Guzzle $http;
 
     public function __construct(private readonly Logger $logger, string $userAgent)
@@ -32,6 +40,35 @@ final class Downloader
             return true;
         }
 
+        $before = -1;
+        for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
+            if ($this->attempt($url, $destPath)) {
+                return true;
+            }
+
+            $partial = is_file($destPath.'.part') ? (int)filesize($destPath.'.part') : 0;
+            if ($attempt < self::MAX_ATTEMPTS && $partial <= $before) {
+                // Попытка не добавила ни байта — дело не в обрыве, повторять бессмысленно
+                $this->logger->err('Повтор не сдвинул закачку — прекращаю: '.basename($destPath));
+                return false;
+            }
+            $before = $partial;
+
+            if ($attempt < self::MAX_ATTEMPTS) {
+                $this->logger->warn(sprintf(
+                    'Повтор %d/%d с %s: %s',
+                    $attempt + 1, self::MAX_ATTEMPTS, $this->humanSize($partial), basename($destPath)
+                ));
+                sleep(min(30, 2 ** $attempt));
+            }
+        }
+
+        $this->logger->err('Не удалось скачать за '.self::MAX_ATTEMPTS.' попыток: '.basename($destPath));
+        return false;
+    }
+
+    private function attempt(string $url, string $destPath): bool
+    {
         $tmp = $destPath.'.part';
         $existing = is_file($tmp) ? filesize($tmp) : 0;
 
@@ -116,6 +153,18 @@ final class Downloader
 
         if (!is_file($tmp) || filesize($tmp) === 0) {
             $this->logger->err('Пустой файл после скачивания');
+            return false;
+        }
+
+        // Соединение может закрыться без исключения, отдав меньше заявленного —
+        // такой обрезанный файл нельзя принимать за готовый, иначе половина видео
+        // навсегда останется как «скачано».
+        $got = (int)filesize($tmp);
+        if ($totalSize !== null && $totalSize > 0 && $got < $totalSize) {
+            $this->logger->warn(sprintf(
+                'Недокачано: %s из %s — оставляю .part',
+                $this->humanSize($got), $this->humanSize($totalSize)
+            ));
             return false;
         }
 
