@@ -26,7 +26,15 @@ final class Client
     private const REFRESH_MAX_STREAK = 3;
 
     /** Сколько раз повторять запрос при обрыве соединения, прежде чем сдаться. */
-    private const NETWORK_RETRIES = 4;
+    private const NETWORK_RETRIES = 7;
+
+    /**
+     * Паузы между повторами сетевого сбоя, секунды.
+     *
+     * Когда DDoS-Guard закрывает адрес, это минуты простоя, а не секунды: короткая
+     * лесенка 2-4-8-15 сгорала вся до разбана, и Runner шёл дальше без дисциплины.
+     */
+    private const NETWORK_PAUSES = [5, 15, 45, 90, 180, 300, 300];
 
     private Guzzle $http;
     private FileCookieJar $jar;
@@ -208,11 +216,15 @@ final class Client
                 // Обрыв соединения — не повод валить прогон целиком: тот же CDN рвёт TLS
                 // и родителю. Раньше такая ошибка уходила наружу и убивала процесс.
                 if ($this->looksTransient($e) && $attempt <= self::NETWORK_RETRIES) {
+                    // DDoS-Guard не отвечает 403, а молча закрывает соединение (cURL error 35)
+                    // и держит адрес закрытым минутами, а не секундами. Пятнадцати секунд
+                    // не хватало: повторы сгорали вхолостую, и дисциплина пропускалась целиком.
+                    $pause = self::NETWORK_PAUSES[min($attempt, count(self::NETWORK_PAUSES)) - 1];
                     $this->logger->warn(sprintf(
-                        'Сеть подвела (%s), повтор %d из %d',
-                        self::shortError($e), $attempt, self::NETWORK_RETRIES
+                        'Сеть подвела (%s), повтор %d из %d через %d с',
+                        self::shortError($e), $attempt, self::NETWORK_RETRIES, $pause
                     ));
-                    sleep(min(15, 2 ** $attempt));
+                    sleep($pause);
                     continue;
                 }
                 if ($this->looksExpired($e) && $this->refreshSession()) {
