@@ -191,77 +191,97 @@ final class Runner
         }
 
         $disciplineDoneCount = 0;
-        $disciplineProcessed = 0;
-        /** @var array<int, array<string, mixed>> $plans */
-        $plans = [];
 
-        foreach ($lessons as $lesson) {
-            if ($this->maxLessons !== null && $disciplineProcessed >= $this->maxLessons) {
-                $this->logger->debug("Достигнут лимит --max-lessons={$this->maxLessons}, перехожу к следующей дисциплине");
-                break;
-            }
-            $disciplineProcessed++;
-            $code = $lesson['code'];
-            $lessonTitle = $lesson['title'];
+        // Разбор урока — три запроса к LMS (2–3 с), закачка — минуты. Поэтому разбор
+        // идёт не пакетами, а по требованию: очередь просит следующий урок, когда у неё
+        // подходит к концу работа, и потоки не простаивают на хвосте пакета.
+        $cursor = 0;
+        $processed = 0;
+        /** @var array<string, array<string, mixed>> $planByDest */
+        $planByDest = [];
+        /** @var array<int, array<string, mixed>> $allPlans */
+        $allPlans = [];
 
-            if ($lesson['locked']) {
-                $this->logger->warn("[$code] Заблокирован: ".($lesson['lockedReason'] ?? 'причина неизвестна'));
-                // Если урок требует пройти тест — выходим из дисциплины (для последующих уроки тоже бесполезно дёргать).
-                // В наборе пересдачи такого быть не должно, а если есть — не бросаем всю дисциплину.
-                if (!$viaRetake && $lesson['lockedReason'] && str_contains($lesson['lockedReason'], 'тест')) {
-                    $this->logger->warn("Дисциплина требует прохождения теста — пропускаю целиком");
-                    $this->state->markDisciplineSkipped($id, 'требуется тест: '.$lesson['lockedReason']);
-                    return;
+        $refill = function () use (
+            &$cursor, &$processed, &$planByDest, &$allPlans,
+            $lessons, $id, $disciplineDir, $viaRetake, &$stats
+        ): array {
+            while ($cursor < count($lessons)) {
+                $lesson = $lessons[$cursor];
+                $index = $cursor;
+                $cursor++;
+
+                if ($this->maxLessons !== null && $processed >= $this->maxLessons) {
+                    $this->logger->debug("Достигнут лимит --max-lessons={$this->maxLessons}");
+                    return [];
                 }
-                // Иначе пропускаем урок — может быть, разблокируется при следующем проходе.
-                continue;
-            }
 
-            if ($lesson['viewUrl'] === null || $lesson['resourceId'] === '') {
-                $this->logger->debug("[$code] Нет ссылки/resourceId, пропускаю");
-                continue;
-            }
+                $code = $lesson['code'];
 
-            // --redo нужен после расширения набора материалов: уроки, отмеченные done
-            // прошлым прогоном, могли отдать только видео (или вообще ничего).
-            // Повторный проход дешёвый — уже лежащие на диске файлы Downloader не качает заново.
-            if (!$this->redo && $this->state->isLessonDone($id, $lesson['resourceId'])) {
-                $this->logger->ok("[$code] Уже обработан ранее");
-                $disciplineDoneCount++;
-                continue;
-            }
-
-            // Смотрим вперёд: следующий заблокированный урок скажет, сколько минут нужно просмотреть
-            $nextRequired = null;
-            for ($j = $disciplineProcessed; $j < count($lessons); $j++) {
-                if ($lessons[$j]['locked'] && $lessons[$j]['requiredMinutes'] !== null) {
-                    $nextRequired = $lessons[$j]['requiredMinutes'];
-                    break;
+                if ($lesson['locked']) {
+                    $this->logger->warn("[$code] Заблокирован: ".($lesson['lockedReason'] ?? 'причина неизвестна'));
+                    // В наборе пересдачи замков быть не должно; если это «Текущие» и замок
+                    // из-за теста — дальше по дисциплине смысла нет.
+                    if (!$viaRetake && $lesson['lockedReason'] && str_contains($lesson['lockedReason'], 'тест')) {
+                        $this->logger->warn('Дисциплина требует прохождения теста — дальше не иду');
+                        $this->state->markDisciplineSkipped($id, 'требуется тест: '.$lesson['lockedReason']);
+                        return [];
+                    }
+                    continue;
                 }
-            }
-            $minutesForThis = $nextRequired ?? $this->watchedMinutes;
 
-            // Фаза 1: разбираем урок и собираем задания на закачку. Запросы к LMS
-            // дешёвые и идут последовательно — сессия одна, параллелить её незачем.
-            $plan = $this->resolveLesson($disciplineDir, $code, $lessonTitle, $lesson, $stats);
-            if ($plan === null) {
-                continue;
-            }
-            $plan['minutes'] = $minutesForThis;
-            $plans[] = $plan;
+                if ($lesson['viewUrl'] === null || $lesson['resourceId'] === '') {
+                    $this->logger->debug("[$code] Нет ссылки/resourceId, пропускаю");
+                    continue;
+                }
 
-            // Разбор урока — это три запроса к LMS, а дисциплина бывает на 126 уроков.
-            // Ждать конца разбора, чтобы начать качать, значит держать канал простаивающим
-            // минут пять. Поэтому сливаем накопленное пакетами, как только их хватает,
-            // чтобы занять все потоки.
-            if ($this->countJobs($plans) >= $this->batchSize()) {
-                $this->flush($id, $plans, $stats, $disciplineDoneCount);
-                $plans = [];
+                // --redo нужен после расширения набора материалов: уроки, отмеченные done
+                // прошлым прогоном, могли отдать только видео (или вообще ничего).
+                if (!$this->redo && $this->state->isLessonDone($id, $lesson['resourceId'])) {
+                    $this->logger->ok("[$code] Уже обработан ранее");
+                    continue;
+                }
+
+                $processed++;
+
+                // Смотрим вперёд: следующий заблокированный урок скажет, сколько минут нужно просмотреть
+                $nextRequired = null;
+                for ($j = $index + 1; $j < count($lessons); $j++) {
+                    if ($lessons[$j]['locked'] && $lessons[$j]['requiredMinutes'] !== null) {
+                        $nextRequired = $lessons[$j]['requiredMinutes'];
+                        break;
+                    }
+                }
+
+                $plan = $this->resolveLesson($disciplineDir, $code, $lesson['title'], $lesson, $stats);
+                if ($plan === null) {
+                    continue;
+                }
+                $plan['minutes'] = $nextRequired ?? $this->watchedMinutes;
+                $allPlans[] = $plan;
+
+                if ($plan['jobs'] === []) {
+                    // Только внешние ссылки — качать нечего, но урок закрыть надо
+                    continue;
+                }
+
+                foreach ($plan['jobs'] as $job) {
+                    $planByDest[$job['dest']] = $plan;
+                }
+
+                return $plan['jobs'];
             }
+
+            return [];
+        };
+
+        $results = $this->queue !== null
+            ? $this->queue->run([], $refill)
+            : $this->runSequentially($refill);
+
+        foreach ($allPlans as $plan) {
+            $this->commitLesson($id, $plan, $results, $stats, $disciplineDoneCount);
         }
-
-        // Остаток — то, что не добрало до полного пакета.
-        $this->flush($id, $plans, $stats, $disciplineDoneCount);
 
         $this->logger->ok(sprintf(
             "Дисциплина '%s'%s: обработано %d уроков",
@@ -271,92 +291,65 @@ final class Runner
         ));
     }
 
-    /** Сколько заданий копим перед запуском пакета: вдвое больше потоков, чтобы пул не голодал. */
-    private function batchSize(): int
-    {
-        return max(4, ($this->queue?->concurrency() ?? 1) * 2);
-    }
-
-    /** @param array<int, array<string, mixed>> $plans */
-    private function countJobs(array $plans): int
-    {
-        $n = 0;
-        foreach ($plans as $plan) {
-            $n += count($plan['jobs']);
-        }
-        return $n;
-    }
-
     /**
-     * Качает накопленный пакет и закрывает только те уроки, у которых забрано ВСЁ.
+     * Закрывает урок в state.json — только если забраны ВСЕ его материалы.
      *
-     * @param array<int, array<string, mixed>> $plans
+     * Иначе, например, при обрыве видео при уже скачанном PDF, отметка done закрыла бы
+     * урок навсегда и недокачанный файл никто бы не подобрал.
+     *
+     * @param array<string, mixed> $plan
+     * @param array<string, bool> $results
      */
-    private function flush(string $disciplineId, array $plans, array &$stats, int &$doneCount): void
+    private function commitLesson(string $disciplineId, array $plan, array $results, array &$stats, int &$doneCount): void
     {
-        if ($plans === []) {
+        $failed = 0;
+        foreach ($plan['jobs'] as $job) {
+            if (($results[$job['dest']] ?? false) === true) {
+                $stats['downloaded']++;
+            } else {
+                $failed++;
+            }
+        }
+
+        if ($failed > 0) {
+            $stats['failed'] += $failed;
+            $this->logger->warn(sprintf(
+                '[%s] Забрано %d из %d — оставляю урок незакрытым для повторного прохода',
+                $plan['code'], count($plan['jobs']) - $failed, count($plan['jobs'])
+            ));
             return;
         }
 
-        $jobs = [];
-        foreach ($plans as $plan) {
-            foreach ($plan['jobs'] as $job) {
-                $jobs[] = $job;
-            }
+        if ($plan['jobs'] === [] && $plan['links'] === 0) {
+            return;
         }
 
-        $results = $this->queue !== null
-            ? $this->queue->run($jobs)
-            : $this->downloadSequentially($jobs);
-
-        foreach ($plans as $plan) {
-            $failed = 0;
-            foreach ($plan['jobs'] as $job) {
-                if (($results[$job['dest']] ?? false) === true) {
-                    $stats['downloaded']++;
-                } else {
-                    $failed++;
-                }
-            }
-
-            if ($failed > 0) {
-                $stats['failed'] += $failed;
-                $this->logger->warn(sprintf(
-                    '[%s] Забрано %d из %d — оставляю урок незакрытым для повторного прохода',
-                    $plan['code'], count($plan['jobs']) - $failed, count($plan['jobs'])
-                ));
-                continue;
-            }
-
-            if ($plan['jobs'] === [] && $plan['links'] === 0) {
-                continue;
-            }
-
-            if ($this->emulateWatch) {
-                $this->markWatched($plan['code'], $plan['ctx'], $plan['referer'], $plan['minutes']);
-            }
-
-            $this->state->markLessonDone($disciplineId, $plan['resourceId'], [
-                'code' => $plan['code'],
-                'title' => $plan['title'],
-                'files' => count($plan['jobs']),
-                'links' => $plan['links'],
-            ]);
-            $doneCount++;
+        if ($this->emulateWatch) {
+            $this->markWatched($plan['code'], $plan['ctx'], $plan['referer'], $plan['minutes']);
         }
+
+        $this->state->markLessonDone($disciplineId, $plan['resourceId'], [
+            'code' => $plan['code'],
+            'title' => $plan['title'],
+            'files' => count($plan['jobs']),
+            'links' => $plan['links'],
+        ]);
+        $doneCount++;
     }
 
     /**
-     * Последовательная закачка — резервный путь, если очередь не задана.
+     * Последовательная закачка — резервный путь, если очередь не задана (--threads=1).
      *
-     * @param array<int, array{url:string, dest:string, label:string}> $jobs
+     * @param callable():array<int, array{url:string, dest:string, label:string}> $refill
      * @return array<string, bool>
      */
-    private function downloadSequentially(array $jobs): array
+    private function runSequentially(callable $refill): array
     {
         $results = [];
-        foreach ($jobs as $job) {
-            $results[$job['dest']] = $this->downloader->download($job['url'], $job['dest']);
+        while (($jobs = $refill()) !== []) {
+            foreach ($jobs as $job) {
+                $results[$job['dest']] = $this->downloader->download($job['url'], $job['dest']);
+            }
         }
         return $results;
     }

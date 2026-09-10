@@ -35,19 +35,20 @@ final class DownloadQueue
         return $this->concurrency;
     }
 
-    /**
-     * @param array<int, array{url:string, dest:string, label:string}> $jobs
-     * @return array<string, bool> результат по каждому dest
-     */
-    /** @var array<int, array{proc:resource}> процессы, которые надо добить при остановке */
-    private array $active = [];
-
     private bool $stopping = false;
 
-    public function run(array $jobs): array
+    /**
+     * @param array<int, array{url:string, dest:string, label:string}> $jobs стартовые задания
+     * @param (callable():array<int, array{url:string, dest:string, label:string}>)|null $refill
+     *        поставщик новых заданий: вызывается, когда работы в очереди мало, и
+     *        возвращает пустой массив, когда заданий больше нет. Без него пул простаивает
+     *        на хвосте пакета — заняты 3 потока из 12, остальные ждут.
+     * @return array<string, bool> результат по каждому dest
+     */
+    public function run(array $jobs, ?callable $refill = null): array
     {
         $results = [];
-        if ($jobs === []) {
+        if ($jobs === [] && $refill === null) {
             return $results;
         }
 
@@ -55,15 +56,24 @@ final class DownloadQueue
 
         $queue = array_values($jobs);
         $total = count($queue);
+        $exhausted = $refill === null;
+        // Задания приходят по ходу дела, поэтому для сводки по объёму держим весь список
+        // и запоминаем размер каждого файла на момент постановки: иначе в «скачано за
+        // этот прогон» попадёт всё, что уже лежало на диске.
+        $seen = $queue;
+        $baseline = 0;
+        foreach ($queue as $job) {
+            $baseline += $this->sizeOf($job['dest']);
+        }
         $running = [];
         $done = 0;
         $lastProgress = time();
         $startedAt = microtime(true);
-        $bytesAtStart = $this->activeBytes($jobs);
 
-        $this->logger->info(sprintf('Очередь загрузок: %d файлов, потоков %d', $total, $this->concurrency));
 
-        while ($queue !== [] || $running !== []) {
+        $this->logger->info(sprintf('Очередь загрузок: потоков %d, стартовых заданий %d', $this->concurrency, $total));
+
+        while ($queue !== [] || $running !== [] || !$exhausted) {
             if (function_exists('pcntl_signal_dispatch')) {
                 pcntl_signal_dispatch();
             }
@@ -71,6 +81,21 @@ final class DownloadQueue
                 $this->terminateAll($running);
                 $this->logger->warn('Остановка: дочерние загрузки прерваны, .part сохранены для докачки');
                 return $results;
+            }
+
+            // Подливаем работу заранее, чтобы свободные слоты не ждали конца текущих закачек
+            while (!$exhausted && !$this->stopping && count($queue) + count($running) < $this->concurrency * 2) {
+                $more = $refill();
+                if ($more === []) {
+                    $exhausted = true;
+                    break;
+                }
+                foreach ($more as $job) {
+                    $queue[] = $job;
+                    $seen[] = $job;
+                    $baseline += $this->sizeOf($job['dest']);
+                    $total++;
+                }
             }
 
             while ($queue !== [] && !$this->stopping && count($running) < $this->concurrency) {
@@ -82,7 +107,6 @@ final class DownloadQueue
                     continue;
                 }
                 $running[] = $handle;
-                $this->active[] = $handle;
             }
 
             foreach ($running as $i => $handle) {
@@ -116,13 +140,13 @@ final class DownloadQueue
 
             if (time() - $lastProgress >= self::PROGRESS_EVERY && $running !== []) {
                 $lastProgress = time();
-                $bytes = $this->activeBytes($jobs);
+                $downloaded = max(0, $this->activeBytes($seen) - $baseline);
                 $elapsed = max(0.1, microtime(true) - $startedAt);
                 $this->logger->info(sprintf(
-                    'В работе %d, готово %d/%d, суммарно %s, средняя %s/s',
+                    'В работе %d, готово %d/%d, скачано %s, средняя %s/s',
                     count($running), $done, $total,
-                    $this->humanSize($bytes),
-                    $this->humanSize((int)(($bytes - $bytesAtStart) / $elapsed)),
+                    $this->humanSize($downloaded),
+                    $this->humanSize((int)($downloaded / $elapsed)),
                 ));
             }
 
@@ -176,7 +200,6 @@ final class DownloadQueue
             }
             proc_close($handle['proc']);
         }
-        $this->active = [];
     }
 
     /**
@@ -239,10 +262,18 @@ final class DownloadQueue
     {
         $bytes = 0;
         foreach ($jobs as $job) {
-            foreach ([$job['dest'], $job['dest'].'.part'] as $path) {
-                if (is_file($path)) {
-                    $bytes += (int)filesize($path);
-                }
+            $bytes += $this->sizeOf($job['dest']);
+        }
+        return $bytes;
+    }
+
+    /** Размер уже готового файла или его `.part` — что найдётся. */
+    private function sizeOf(string $dest): int
+    {
+        $bytes = 0;
+        foreach ([$dest, $dest.'.part'] as $path) {
+            if (is_file($path)) {
+                $bytes += (int)filesize($path);
             }
         }
         return $bytes;
