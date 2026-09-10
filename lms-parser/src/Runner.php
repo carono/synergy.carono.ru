@@ -249,20 +249,66 @@ final class Runner
             }
             $plan['minutes'] = $minutesForThis;
             $plans[] = $plan;
+
+            // Разбор урока — это три запроса к LMS, а дисциплина бывает на 126 уроков.
+            // Ждать конца разбора, чтобы начать качать, значит держать канал простаивающим
+            // минут пять. Поэтому сливаем накопленное пакетами, как только их хватает,
+            // чтобы занять все потоки.
+            if ($this->countJobs($plans) >= $this->batchSize()) {
+                $this->flush($id, $plans, $stats, $disciplineDoneCount);
+                $plans = [];
+            }
         }
 
-        // Фаза 2: качаем всё собранное пулом процессов.
+        // Остаток — то, что не добрало до полного пакета.
+        $this->flush($id, $plans, $stats, $disciplineDoneCount);
+
+        $this->logger->ok(sprintf(
+            "Дисциплина '%s'%s: обработано %d уроков",
+            $title,
+            $viaRetake ? ' (пересдача)' : '',
+            $disciplineDoneCount,
+        ));
+    }
+
+    /** Сколько заданий копим перед запуском пакета: вдвое больше потоков, чтобы пул не голодал. */
+    private function batchSize(): int
+    {
+        return max(4, ($this->queue?->concurrency() ?? 1) * 2);
+    }
+
+    /** @param array<int, array<string, mixed>> $plans */
+    private function countJobs(array $plans): int
+    {
+        $n = 0;
+        foreach ($plans as $plan) {
+            $n += count($plan['jobs']);
+        }
+        return $n;
+    }
+
+    /**
+     * Качает накопленный пакет и закрывает только те уроки, у которых забрано ВСЁ.
+     *
+     * @param array<int, array<string, mixed>> $plans
+     */
+    private function flush(string $disciplineId, array $plans, array &$stats, int &$doneCount): void
+    {
+        if ($plans === []) {
+            return;
+        }
+
         $jobs = [];
         foreach ($plans as $plan) {
             foreach ($plan['jobs'] as $job) {
                 $jobs[] = $job;
             }
         }
+
         $results = $this->queue !== null
             ? $this->queue->run($jobs)
             : $this->downloadSequentially($jobs);
 
-        // Фаза 3: закрываем только те уроки, у которых забрано ВСЁ.
         foreach ($plans as $plan) {
             $failed = 0;
             foreach ($plan['jobs'] as $job) {
@@ -290,21 +336,14 @@ final class Runner
                 $this->markWatched($plan['code'], $plan['ctx'], $plan['referer'], $plan['minutes']);
             }
 
-            $this->state->markLessonDone($id, $plan['resourceId'], [
+            $this->state->markLessonDone($disciplineId, $plan['resourceId'], [
                 'code' => $plan['code'],
                 'title' => $plan['title'],
                 'files' => count($plan['jobs']),
                 'links' => $plan['links'],
             ]);
-            $disciplineDoneCount++;
+            $doneCount++;
         }
-
-        $this->logger->ok(sprintf(
-            "Дисциплина '%s'%s: обработано %d уроков",
-            $title,
-            $viaRetake ? ' (пересдача)' : '',
-            $disciplineDoneCount,
-        ));
     }
 
     /**

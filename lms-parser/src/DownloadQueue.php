@@ -30,6 +30,11 @@ final class DownloadQueue
     ) {
     }
 
+    public function concurrency(): int
+    {
+        return $this->concurrency;
+    }
+
     /**
      * @param array<int, array{url:string, dest:string, label:string}> $jobs
      * @return array<string, bool> результат по каждому dest
