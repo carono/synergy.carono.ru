@@ -266,6 +266,15 @@ final class Client
         }
 
         $this->logger->info('Авторизация...');
+        // Форма входа — такой же сетевой запрос, как все прочие: DDoS-Guard рвёт соединение
+        // и здесь. Без общей обёртки прогон падал трассировкой на первом же обрыве.
+        $this->retryOnExpiry(function (): void {
+            $this->performLogin();
+        });
+    }
+
+    private function performLogin(): void
+    {
         try {
             $this->assertNotChallenged((string)$this->http->get('/')->getBody());
         } catch (\GuzzleHttp\Exception\ClientException $e) {
