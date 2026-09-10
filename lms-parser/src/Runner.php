@@ -227,6 +227,11 @@ final class Runner
             $lessons, $id, $disciplineDir, $viaRetake, &$stats
         ): array {
             while ($cursor < count($lessons)) {
+                // Дисциплина идёт часами, а сессия живёт минуты. Разбор урока — единственная
+                // точка, где родитель что-то делает сам, поэтому обновляемся здесь: на
+                // время челленджа закачки замирают на несколько секунд.
+                $this->client->refreshIfStale();
+
                 $lesson = $lessons[$cursor];
                 $index = $cursor;
                 $cursor++;

@@ -35,11 +35,18 @@ final class DownloadQueue
         return $this->concurrency;
     }
 
+    /** Сколько раз возвращать задание в очередь из-за 403, прежде чем сдаться. */
+    private const AUTH_RETRIES = 2;
+
     private bool $stopping = false;
     /** Пока true, новые закачки не стартуют — на время обновления сессии. */
     private bool $paused = false;
     /** @var array<int, int> pid'ы работающих воркеров: их надо уметь заморозить */
     private array $activePids = [];
+    /** @var (callable():bool)|null обновить сессию, когда воркер получил 403 */
+    private $authFixHook = null;
+    /** @var array<string, int> сколько раз задание уже возвращалось в очередь из-за 403 */
+    private array $authRetries = [];
 
     /**
      * @param array<int, array{url:string, dest:string, label:string}> $jobs стартовые задания
@@ -132,6 +139,27 @@ final class DownloadQueue
                 $this->activePids = array_values(array_diff($this->activePids, [$status['pid'] ?? 0]));
 
                 $ok = $status['exitcode'] === 0;
+
+                // 403 от самой LMS — это протухшая сессия, а не битый материал. Файл вернём
+                // в очередь, но сначала обновим сессию: иначе повтор упрётся в то же.
+                if (!$ok && $this->needsFreshSession($running[$i]['buffer'])) {
+                    $dest = $handle['job']['dest'];
+                    $attempts = $this->authRetries[$dest] ?? 0;
+                    if ($attempts < self::AUTH_RETRIES) {
+                        $this->authRetries[$dest] = $attempts + 1;
+                        $this->logger->warn(sprintf(
+                            'LMS ответила 403 на %s — обновляю сессию и вернусь к файлу',
+                            basename($dest)
+                        ));
+                        if ($this->authFixHook !== null) {
+                            ($this->authFixHook)();
+                        }
+                        $queue[] = $handle['job'];
+                        unset($running[$i]);
+                        continue;
+                    }
+                }
+
                 $results[$handle['job']['dest']] = $ok;
                 $done++;
 
@@ -271,6 +299,19 @@ final class DownloadQueue
     }
 
     /**
+     * Что делать, когда воркер получил от LMS 403 вместо файла.
+     *
+     * Воркеры не обновляют сессию сами: их двенадцать, и каждый полез бы проходить
+     * челлендж. Сессию держит родитель — он и обновляет, а задание возвращается в очередь.
+     *
+     * @param callable():bool $fix
+     */
+    public function onAuthFailure(callable $fix): void
+    {
+        $this->authFixHook = $fix;
+    }
+
+    /**
      * Приостановить закачки: новые не стартуют, работающие замирают по SIGSTOP.
      *
      * Нужно на время прохождения челленджа DDoS-Guard: он грузит страницу через тот же
@@ -309,6 +350,13 @@ final class DownloadQueue
             $bytes += $this->sizeOf($job['dest']);
         }
         return $bytes;
+    }
+
+    /** Похоже ли, что воркер упал из-за протухшей сессии, а не из-за самого файла. */
+    private function needsFreshSession(string $buffer): bool
+    {
+        return str_contains($buffer, 'HTTP 403 вместо файла')
+            || str_contains($buffer, 'страница DDoS-Guard');
     }
 
     /** Размер уже готового файла или его `.part` — что найдётся. */

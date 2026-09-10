@@ -203,6 +203,10 @@ $client->useDownloadHooks(
     static fn() => $queue->resume(),
 );
 
+// Воркер, получивший от LMS 403, сам сессию не обновляет: их двенадцать, и каждый полез бы
+// проходить челлендж. Сессию держит родитель.
+$queue->onAuthFailure(static fn() => $client->refreshSession());
+
 $runner = new Runner(
     $client, $parser, $downloader, $scorm, $state, $logger,
     $outputDir, $watchMinutes, $emulateWatch,
