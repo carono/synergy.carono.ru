@@ -16,7 +16,11 @@ final class Downloader
      * десятом-двадцатом уроке. Файл при этом сохраняется как `.part`, поэтому
      * повтор продолжает с того же места, а не начинает заново.
      */
-    private const MAX_ATTEMPTS = 5;
+    /**
+     * Потолок числа попыток на файл. Не рабочее ограничение, а страховка от вечного
+     * цикла: закачку останавливает отсутствие прогресса, а не этот счётчик.
+     */
+    private const MAX_ATTEMPTS = 500;
 
     /** Ниже этой скорости (байт/с) дольше STALL_SECONDS закачка считается вставшей. */
     private const STALL_BYTES_PER_SEC = 1024;
@@ -82,6 +86,10 @@ final class Downloader
             return true;
         }
 
+        // Число попыток не ограничено, пока каждая что-то добавляет: CDN рвёт соединение
+        // каждые пару мегабайт, и на 500-мегабайтном видео пяти попыток не хватает —
+        // файл бросался на трёх четвертях. Останавливает не счётчик, а отсутствие
+        // прогресса: MAX_STALLED_ATTEMPTS подряд без единого байта.
         $before = -1;
         $stalled = 0;
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
@@ -101,12 +109,13 @@ final class Downloader
                 return false;
             }
 
-            if ($attempt < self::MAX_ATTEMPTS) {
-                $this->logger->warn(sprintf(
-                    'Повтор %d/%d с %s: %s',
-                    $attempt + 1, self::MAX_ATTEMPTS, $this->humanSize($partial), basename($destPath)
-                ));
-                sleep(min(30, 2 ** $attempt));
+            $this->logger->warn(sprintf(
+                'Повтор %d с %s: %s',
+                $attempt + 1, $this->humanSize($partial), basename($destPath)
+            ));
+            // Пауза нужна только когда закачка стоит: после продуктивного обрыва ждать нечего.
+            if ($stalled > 0) {
+                sleep(min(30, 2 ** $stalled));
             }
         }
 
