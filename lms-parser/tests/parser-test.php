@@ -127,5 +127,41 @@ check('materials(): ссылки внутрь LMS игнорируются',
     $parser->materials('<body><a href="https://lms.synergy.ru/student/up">Обучение</a></body>'), []);
 check('materials(): пустая страница', $parser->materials('<body><p>&nbsp;</p></body>'), []);
 
+// --- Downloader: что делать с байтами, записанными до обрыва -------------------
+
+use Carono\LmsParser\Downloader;
+
+check('keepsBytes: 206 при докачке — байты настоящие',
+    Downloader::keepsBytes(206, 139_800_000, false), true);
+check('keepsBytes: 206 с нуля',
+    Downloader::keepsBytes(206, 0, false), true);
+check('keepsBytes: 200 с нуля — писали с начала, всё сходится',
+    Downloader::keepsBytes(200, 0, false), true);
+// Главный случай: просили продолжение, получили файл с начала. Дописывать к хвосту
+// нельзя — получится склейка двух начал, и Content-Length совпадёт не сразу.
+check('keepsBytes: 200 поверх непустого .part — склейка, качать заново',
+    Downloader::keepsBytes(200, 139_800_000, false), false);
+check('keepsBytes: 200 поверх непустого .part, но ON_HEADERS уже обнулил файл',
+    Downloader::keepsBytes(200, 139_800_000, true), true);
+check('keepsBytes: 403 — в файле страница ошибки',
+    Downloader::keepsBytes(403, 139_800_000, false), false);
+check('keepsBytes: 416 — Range за пределами файла',
+    Downloader::keepsBytes(416, 139_800_000, false), false);
+check('keepsBytes: обрыв до заголовков',
+    Downloader::keepsBytes(0, 139_800_000, false), false);
+
+check('declaredTotal: 206 берёт размер из Content-Range',
+    Downloader::declaredTotal(206, 'bytes 100-999/1000', '900', 100), 1000);
+check('declaredTotal: 206 без Content-Range считает от смещения',
+    Downloader::declaredTotal(206, '', '900', 100), 1000);
+check('declaredTotal: 200 берёт Content-Length как есть',
+    Downloader::declaredTotal(200, '', '1000', 0), 1000);
+// Ради этого случая всё и затевалось: HEAD у CDN молчит про размер, и без размера из
+// выдачи обрезанное видео принималось за готовое.
+check('declaredTotal: без заголовков размера — неизвестен',
+    Downloader::declaredTotal(200, '', '', 0), null);
+check('declaredTotal: 403 — размер тела ошибки не считается',
+    Downloader::declaredTotal(403, '', '512', 0), null);
+
 printf("\nПроверок пройдено: %d, провалено: %d\n", $passed, $failed);
 exit($failed === 0 ? 0 : 1);

@@ -161,13 +161,23 @@ final class Downloader
         $startTime = microtime(true);
         $status = 0;
         $rangeIgnored = false;
+        // Заявленный размер по заголовкам самой выдачи. HEAD у этого CDN на части файлов
+        // отвечает без Content-Length, и тогда проверять готовность было нечем: обрезанное
+        // видео принималось за скачанное. В ответе на GET размер есть всегда.
+        $declared = null;
 
         try {
             $response = $this->http->get($url, [
                 RequestOptions::HEADERS => $headers,
                 RequestOptions::SINK => $sink,
-                RequestOptions::ON_HEADERS => function ($resp) use (&$status, &$rangeIgnored, $existing, $sink): void {
+                RequestOptions::ON_HEADERS => function ($resp) use (&$status, &$rangeIgnored, &$declared, $existing, $sink): void {
                     $status = $resp->getStatusCode();
+                    $declared = self::declaredTotal(
+                        $status,
+                        $resp->getHeaderLine('Content-Range'),
+                        $resp->getHeaderLine('Content-Length'),
+                        $existing,
+                    );
                     // Мы просили продолжение, а сервер отдаёт файл с начала (200 вместо 206).
                     // Дописывать такое в конец — гарантированно битый файл, поэтому чистим .part
                     // и пишем с нуля в этой же попытке.
@@ -206,14 +216,18 @@ final class Downloader
                 fclose($sink);
             }
             // Откатывать .part можно только тогда, когда в него писалось тело ошибки.
-            // Если сервер ответил 200/206 и оборвал TLS посреди передачи (cURL 56 —
-            // штатное поведение этого CDN на больших видео), в файле лежат настоящие
-            // байты: откат выбрасывал их, докачка стартовала с того же смещения и
+            // Если сервер ответил 206 и оборвал TLS посреди передачи (cURL 56 — штатное
+            // поведение этого CDN на больших видео), в файле лежат настоящие байты:
+            // откат выбрасывал их, докачка стартовала с того же смещения и
             // 140-мегабайтные видео не заканчивались никогда.
-            $keepBytes = $status === 200 || $status === 206;
-            if (!$keepBytes) {
-                $this->rollback($tmp, $existing);
+            if (self::keepsBytes($status, $existing, $rangeIgnored)) {
+                $this->logger->err('Ошибка скачивания: '.$e->getMessage());
+                return false;
             }
+            // Ответ 200 на запрос с Range означает, что сервер отдаёт файл с начала.
+            // Дописать такое к хвосту — склеить два начала, и проверка по Content-Length
+            // поймает это не сразу. Значит, .part надо обнулить и качать заново.
+            $this->rollback($tmp, $status === 200 ? 0 : $existing);
             $this->logger->err('Ошибка скачивания: '.$e->getMessage());
             return false;
         }
@@ -227,6 +241,9 @@ final class Downloader
             $this->logger->warn('Сервер не поддержал Range — файл перекачан с начала: '.basename($destPath));
             $existing = 0;
         }
+
+        // HEAD мог смолчать про размер — тогда верим заголовкам выдачи.
+        $totalSize ??= $declared;
 
         if ($status >= 300 || $status < 200) {
             $body = (string)$response->getBody();
@@ -258,6 +275,43 @@ final class Downloader
         rename($tmp, $destPath);
         $this->logger->ok('Готово: '.basename($destPath).' ('.$this->humanSize((int)filesize($destPath)).')');
         return true;
+    }
+
+    /**
+     * Полный размер файла по заголовкам ответа: из `Content-Range` для 206,
+     * из `Content-Length` для 200. Нужен, когда HEAD ответил без размера.
+     */
+    public static function declaredTotal(int $status, string $contentRange, string $contentLength, int $existing): ?int
+    {
+        if ($status === 206 && preg_match('~/\s*(\d+)\s*$~', $contentRange, $m)) {
+            return (int)$m[1];
+        }
+        if ($status === 200 && $contentLength !== '') {
+            return (int)$contentLength;
+        }
+        if ($status === 206 && $contentLength !== '') {
+            return $existing + (int)$contentLength;
+        }
+        return null;
+    }
+
+    /**
+     * Можно ли оставить в `.part` то, что успело записаться до обрыва.
+     *
+     * 206 — сервер продолжил с запрошенного смещения, дописанное корректно.
+     * 200 — отдал файл с начала: это безопасно только если и писали с нуля, либо
+     * ON_HEADERS уже обнулил `.part` под запись с начала.
+     * Всё остальное (4xx, 5xx, обрыв до заголовков) — в файле не байты видео.
+     */
+    public static function keepsBytes(int $status, int $existing, bool $rangeIgnored): bool
+    {
+        if ($status === 206) {
+            return true;
+        }
+        if ($status === 200) {
+            return $existing === 0 || $rangeIgnored;
+        }
+        return false;
     }
 
     /**
