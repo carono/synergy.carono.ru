@@ -53,8 +53,6 @@ $logger = new Logger();
 $command = [
     (string)(getenv('LMS_NODE_BIN') ?: 'node'),
     $root.'/tools/ddg-bootstrap.mjs',
-    '--login='.$login,
-    '--password='.$password,
 ];
 if (isset($opts['headless'])) {
     $command[] = '--headless';
@@ -66,8 +64,14 @@ if ($playwrightDir !== '') {
 
 $logger->info('Запускаю браузер для прохождения DDoS-Guard...');
 
+// Креды передаём окружением, а не аргументами: argv виден в `ps` любому на машине.
+$childEnv = ['LMS_LOGIN' => $login, 'LMS_PASSWORD' => $password] + array_filter(
+    ['PATH' => getenv('PATH'), 'HOME' => getenv('HOME'), 'DISPLAY' => getenv('DISPLAY')],
+    static fn($v) => $v !== false,
+);
+
 $descriptors = [1 => ['pipe', 'w'], 2 => STDERR];
-$process = proc_open($command, $descriptors, $pipes, $root);
+$process = proc_open($command, $descriptors, $pipes, $root, $childEnv);
 if (!is_resource($process)) {
     fwrite(STDERR, "Не удалось запустить node\n");
     exit(1);

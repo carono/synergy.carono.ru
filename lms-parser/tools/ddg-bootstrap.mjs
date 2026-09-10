@@ -9,7 +9,10 @@
  * Запускается из bin/cookies, самостоятельно вызывать не нужно.
  *
  * Использование:
- *   node tools/ddg-bootstrap.mjs --login=... --password=... [--playwright=DIR] [--headless]
+ *   LMS_LOGIN=... LMS_PASSWORD=... node tools/ddg-bootstrap.mjs [--playwright=DIR] [--headless]
+ *
+ * Креды принимаются только через окружение: аргументы командной строки видны в `ps`
+ * любому пользователю машины.
  *
  * Важно: headless-браузер DDoS-Guard распознаёт и не пропускает, поэтому по умолчанию
  * окно запускается видимым (в WSL — через WSLg, нужен DISPLAY).
@@ -29,10 +32,10 @@ for (const raw of process.argv.slice(2)) {
   if (m) args[m[1]] = m[2] === undefined ? true : m[2];
 }
 
-const login = args.login;
-const password = args.password;
+const login = process.env.LMS_LOGIN;
+const password = process.env.LMS_PASSWORD;
 if (!login || !password) {
-  console.error('Нужны --login и --password');
+  console.error('Нужны LMS_LOGIN и LMS_PASSWORD в окружении');
   process.exit(2);
 }
 

@@ -9,6 +9,7 @@ use Carono\LmsParser\Logger;
 use Carono\LmsParser\Parser;
 use Carono\LmsParser\Runner;
 use Carono\LmsParser\Scorm;
+use Carono\LmsParser\Secret;
 use Carono\LmsParser\State;
 
 $root = dirname(__DIR__);
@@ -84,7 +85,7 @@ if (!str_starts_with($outputDir, '/') && !preg_match('~^[A-Za-z]:~', $outputDir)
 
 $logger = new Logger();
 $logger->info("Output:  $outputDir");
-$logger->info("User:    $login");
+$logger->info("User:    ".Secret::maskLogin($login));
 $logger->info("Watch:   {$watchMinutes} мин".($emulateWatch ? '' : ' (только скачивание)'));
 $logger->info("Retake:  $retakeMode");
 if ($semesterFilter !== null) {
