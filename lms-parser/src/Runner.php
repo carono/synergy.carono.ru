@@ -6,6 +6,13 @@ namespace Carono\LmsParser;
 
 final class Runner
 {
+    /** Открывать вкладку «Пересдача», если по дисциплине есть задолженность или заблокированные уроки. */
+    public const RETAKE_AUTO = 'auto';
+    /** Всегда предпочитать вкладку «Пересдача», если она есть. */
+    public const RETAKE_FORCE = 'force';
+    /** Не трогать вкладку «Пересдача», работать только с «Текущими». */
+    public const RETAKE_OFF = 'off';
+
     public function __construct(
         private readonly Client $client,
         private readonly Parser $parser,
@@ -19,6 +26,7 @@ final class Runner
         private readonly ?int $maxDisciplines = null,
         private readonly ?int $maxLessons = null,
         private readonly ?string $disciplineFilter = null,
+        private readonly string $retakeMode = self::RETAKE_AUTO,
     ) {
     }
 
@@ -59,8 +67,14 @@ final class Runner
         }
 
         $this->logger->ok("Семестр: {$target['label']} (".count($target['disciplines']).' дисциплин)');
+        if (!empty($target['debt'])) {
+            $this->logger->warn(sprintf(
+                'Семестр помечен как задолженность (%s) — буду искать вкладки «Пересдача»',
+                $target['debtCount'] > 0 ? 'задолженностей: '.$target['debtCount'] : 'по иконке статуса',
+            ));
+        }
 
-        $stats = ['downloaded' => 0, 'skipped' => 0, 'failed' => 0, 'disciplines' => 0];
+        $stats = ['downloaded' => 0, 'skipped' => 0, 'failed' => 0, 'disciplines' => 0, 'retakes' => 0];
 
         foreach ($target['disciplines'] as $discipline) {
             if ($this->disciplineFilter !== null
@@ -83,8 +97,8 @@ final class Runner
         ]);
 
         $this->logger->ok(sprintf(
-            'Готово. Дисциплин: %d, скачано: %d, пропущено: %d, ошибок: %d',
-            $stats['disciplines'], $stats['downloaded'], $stats['skipped'], $stats['failed']
+            'Готово. Дисциплин: %d (через пересдачу: %d), скачано: %d, пропущено: %d, ошибок: %d',
+            $stats['disciplines'], $stats['retakes'], $stats['downloaded'], $stats['skipped'], $stats['failed']
         ));
     }
 
@@ -100,11 +114,6 @@ final class Runner
             'slug' => Slug::make($title),
         ]);
 
-        if ($this->state->isDisciplineSkipped($id)) {
-            $this->logger->warn("Пропущена ранее: ".$title);
-            return;
-        }
-
         try {
             $html = $this->client->getHtml($discipline['contentsUrl']);
         } catch (\Throwable $e) {
@@ -115,6 +124,38 @@ final class Runner
 
         $info = $this->parser->disciplineLessons($html);
         $lessons = $info['lessons'];
+        $viaRetake = false;
+
+        $retake = $this->pickRetakeTab($html, $discipline, $lessons);
+        if ($retake !== null) {
+            $this->logger->info("Вкладка «{$retake['label']}» доступна — беру материалы оттуда: {$retake['url']}");
+            try {
+                $retakeHtml = $this->client->getHtml($retake['url']);
+                $retakeInfo = $this->parser->disciplineLessons($retakeHtml);
+                if (empty($retakeInfo['lessons'])) {
+                    $this->logger->warn('Во вкладке пересдачи уроков не найдено — остаюсь на «Текущих»');
+                } else {
+                    $html = $retakeHtml;
+                    $info = $retakeInfo;
+                    $lessons = $retakeInfo['lessons'];
+                    $viaRetake = true;
+                    $stats['retakes']++;
+                    // Пересдача открывает курс целиком — прежний отказ «требуется тест» больше не актуален
+                    $this->state->clearDisciplineSkip($id);
+                    $this->state->setDisciplineMeta($id, [
+                        'retake_tab' => $retake['label'],
+                        'retake_url' => $retake['url'],
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                $this->logger->warn('Не открыть вкладку пересдачи: '.$e->getMessage());
+            }
+        }
+
+        if (!$viaRetake && $this->state->isDisciplineSkipped($id)) {
+            $this->logger->warn("Пропущена ранее: ".$title);
+            return;
+        }
 
         if (empty($lessons)) {
             $this->logger->warn("Уроков не найдено в HTML дисциплины");
@@ -128,9 +169,10 @@ final class Runner
             Slug::make($title),
         );
 
-        $this->logger->info(sprintf('Уроков: %d (заблокированных: %d)',
+        $this->logger->info(sprintf('Уроков: %d (заблокированных: %d)%s',
             count($lessons),
-            count(array_filter($lessons, fn($l) => $l['locked']))
+            count(array_filter($lessons, fn($l) => $l['locked'])),
+            $viaRetake ? ' — набор пересдачи' : ''
         ));
 
         // Сохраняем метаданные ВСЕХ уроков (включая locked) до основной обработки
@@ -156,12 +198,13 @@ final class Runner
             }
             $disciplineProcessed++;
             $code = $lesson['code'];
-            $title = $lesson['title'];
+            $lessonTitle = $lesson['title'];
 
             if ($lesson['locked']) {
                 $this->logger->warn("[$code] Заблокирован: ".($lesson['lockedReason'] ?? 'причина неизвестна'));
                 // Если урок требует пройти тест — выходим из дисциплины (для последующих уроки тоже бесполезно дёргать).
-                if ($lesson['lockedReason'] && str_contains($lesson['lockedReason'], 'тест')) {
+                // В наборе пересдачи такого быть не должно, а если есть — не бросаем всю дисциплину.
+                if (!$viaRetake && $lesson['lockedReason'] && str_contains($lesson['lockedReason'], 'тест')) {
                     $this->logger->warn("Дисциплина требует прохождения теста — пропускаю целиком");
                     $this->state->markDisciplineSkipped($id, 'требуется тест: '.$lesson['lockedReason']);
                     return;
@@ -191,17 +234,57 @@ final class Runner
             }
             $minutesForThis = $nextRequired ?? $this->watchedMinutes;
 
-            $ok = $this->processLesson($disciplineDir, $code, $title, $lesson, $stats, $minutesForThis);
+            $ok = $this->processLesson($disciplineDir, $code, $lessonTitle, $lesson, $stats, $minutesForThis);
             if ($ok) {
                 $this->state->markLessonDone($id, $lesson['resourceId'], [
                     'code' => $code,
-                    'title' => $title,
+                    'title' => $lessonTitle,
                 ]);
                 $disciplineDoneCount++;
             }
         }
 
-        $this->logger->ok("Дисциплина '$title': обработано $disciplineDoneCount уроков");
+        $this->logger->ok(sprintf(
+            "Дисциплина '%s'%s: обработано %d уроков",
+            $title,
+            $viaRetake ? ' (пересдача)' : '',
+            $disciplineDoneCount,
+        ));
+    }
+
+    /**
+     * Решает, надо ли переключиться на вкладку «Пересдача», и возвращает её.
+     *
+     * @param array<int, array<string, mixed>> $lessons уроки активной вкладки
+     * @return array{label:string, url:string, index:?int, active:bool, retake:bool}|null
+     */
+    private function pickRetakeTab(string $html, array $discipline, array $lessons): ?array
+    {
+        if ($this->retakeMode === self::RETAKE_OFF) {
+            return null;
+        }
+
+        $tabs = $this->parser->disciplineTabs($html);
+        $retakeTab = null;
+        foreach ($tabs as $tab) {
+            if ($tab['retake'] && !$tab['active']) {
+                $retakeTab = $tab;
+                break;
+            }
+        }
+        if ($retakeTab === null) {
+            return null;
+        }
+
+        if ($this->retakeMode === self::RETAKE_FORCE) {
+            return $retakeTab;
+        }
+
+        // auto: переключаемся, только если «Текущие» реально урезаны
+        $hasDebt = !empty($discipline['debt']);
+        $hasLocked = (bool)array_filter($lessons, fn($l) => $l['locked']);
+
+        return ($hasDebt || $hasLocked) ? $retakeTab : null;
     }
 
     private function processLesson(string $disciplineDir, string $code, string $title, array $lesson, array &$stats, int $watchMinutes): bool

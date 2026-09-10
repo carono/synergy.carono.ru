@@ -1,0 +1,98 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Обновляет cookies.json, пройдя JS-челлендж DDoS-Guard настоящим браузером.
+ *
+ * lms.synergy.ru отдаёт Guzzle 403 с страницей DDoS-Guard, поэтому логин из PHP
+ * невозможен «с нуля». Скрипт запускает tools/ddg-bootstrap.mjs (Playwright),
+ * тот проходит челлендж и логинится, а результат кладётся в cookies.json —
+ * дальше ./bin/parse и ./bin/session работают как обычно, пока сессия жива.
+ */
+
+use Carono\LmsParser\Logger;
+
+$root = dirname(__DIR__);
+require $root.'/vendor/autoload.php';
+
+$envPath = $root.'/.env';
+if (is_file($envPath)) {
+    foreach (file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (str_starts_with(ltrim($line), '#')) continue;
+        if (!str_contains($line, '=')) continue;
+        [$k, $v] = explode('=', $line, 2);
+        $k = trim($k);
+        $v = trim($v, " \t\n\r\0\x0B\"'");
+        if ($k !== '' && getenv($k) === false) {
+            putenv("$k=$v");
+            $_ENV[$k] = $v;
+        }
+    }
+}
+
+$opts = getopt('', ['headless', 'playwright:', 'help']);
+if (isset($opts['help'])) {
+    echo "Использование: ./bin/cookies [--headless] [--playwright=DIR]\n";
+    echo "  обновляет cookies.json, пройдя DDoS-Guard через браузер\n";
+    echo "  --headless          запустить браузер без окна (DDoS-Guard такое обычно не пропускает)\n";
+    echo "  --playwright=DIR    каталог, где стоит playwright (иначе LMS_PLAYWRIGHT_DIR или ~/playwright-tests)\n";
+    exit(0);
+}
+
+$login = (string)(getenv('LMS_LOGIN') ?: '');
+$password = (string)(getenv('LMS_PASSWORD') ?: '');
+if ($login === '' || $password === '') {
+    fwrite(STDERR, "Не задан LMS_LOGIN / LMS_PASSWORD (см. .env)\n");
+    exit(2);
+}
+
+$logger = new Logger();
+
+$command = [
+    (string)(getenv('LMS_NODE_BIN') ?: 'node'),
+    $root.'/tools/ddg-bootstrap.mjs',
+    '--login='.$login,
+    '--password='.$password,
+];
+if (isset($opts['headless'])) {
+    $command[] = '--headless';
+}
+$playwrightDir = (string)($opts['playwright'] ?? getenv('LMS_PLAYWRIGHT_DIR') ?: '');
+if ($playwrightDir !== '') {
+    $command[] = '--playwright='.$playwrightDir;
+}
+
+$logger->info('Запускаю браузер для прохождения DDoS-Guard...');
+
+$descriptors = [1 => ['pipe', 'w'], 2 => STDERR];
+$process = proc_open($command, $descriptors, $pipes, $root);
+if (!is_resource($process)) {
+    fwrite(STDERR, "Не удалось запустить node\n");
+    exit(1);
+}
+$stdout = (string)stream_get_contents($pipes[1]);
+fclose($pipes[1]);
+$code = proc_close($process);
+
+if ($code !== 0) {
+    fwrite(STDERR, "ddg-bootstrap завершился с кодом $code\n");
+    exit($code);
+}
+
+$cookies = json_decode(trim($stdout), true);
+if (!is_array($cookies) || $cookies === []) {
+    fwrite(STDERR, "ddg-bootstrap не вернул cookies\n");
+    exit(1);
+}
+
+$cookieFile = $root.'/cookies.json';
+file_put_contents($cookieFile, json_encode($cookies, JSON_UNESCAPED_SLASHES));
+
+$names = array_column($cookies, 'Name');
+$logger->ok(sprintf('cookies.json обновлён (%d cookies: %s)', count($cookies), implode(', ', $names)));
+
+if (!in_array('PHPSESSID', $names, true)) {
+    $logger->warn('Среди cookies нет PHPSESSID — сессия LMS могла не установиться');
+}

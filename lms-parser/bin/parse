@@ -33,7 +33,8 @@ if (is_file($envPath)) {
 // CLI args
 $opts = getopt('', [
     'semester:', 'discover-only', 'no-watch', 'minutes:',
-    'max-disciplines:', 'max-lessons:', 'discipline:', 'help',
+    'max-disciplines:', 'max-lessons:', 'discipline:',
+    'retake::', 'no-retake', 'tabs', 'help',
 ]);
 if (isset($opts['help'])) {
     echo "Использование: ./bin/parse [--semester=N] [--discover-only] [--no-watch] [--minutes=N]\n";
@@ -44,6 +45,12 @@ if (isset($opts['help'])) {
     echo "  --max-disciplines=N      обработать не более N дисциплин (для тестов)\n";
     echo "  --max-lessons=N          обработать не более N уроков в каждой дисциплине\n";
     echo "  --discipline=str|id      обработать только дисциплины, чей title содержит str (или с указанным id)\n";
+    echo "  --retake[=auto|force|off] как работать с вкладкой «Пересдача» на странице дисциплины:\n";
+    echo "                           auto  (по умолчанию) — брать её, если есть задолженность или заблокированные уроки\n";
+    echo "                           force — всегда брать, если вкладка вообще есть\n";
+    echo "                           off   — игнорировать, работать только с «Текущими»\n";
+    echo "  --no-retake              то же, что --retake=off\n";
+    echo "  --tabs                   вместе с --discover-only: открыть каждую дисциплину и показать её вкладки материалов\n";
     exit(0);
 }
 
@@ -54,6 +61,17 @@ $userAgent = (string)(getenv('LMS_USER_AGENT') ?: 'Mozilla/5.0 (X11; Linux x86_6
 $watchMinutes = (int)($opts['minutes'] ?? getenv('LMS_REQUIRED_WATCH_MINUTES') ?: 30);
 $emulateWatch = !isset($opts['no-watch']);
 $semesterFilter = isset($opts['semester']) ? (int)$opts['semester'] : null;
+
+$retakeMode = Runner::RETAKE_AUTO;
+if (isset($opts['no-retake'])) {
+    $retakeMode = Runner::RETAKE_OFF;
+} elseif (isset($opts['retake'])) {
+    $retakeMode = $opts['retake'] === false ? Runner::RETAKE_FORCE : (string)$opts['retake'];
+}
+if (!in_array($retakeMode, [Runner::RETAKE_AUTO, Runner::RETAKE_FORCE, Runner::RETAKE_OFF], true)) {
+    fwrite(STDERR, "Неверное значение --retake: $retakeMode (ожидается auto|force|off)\n");
+    exit(2);
+}
 
 if ($login === '' || $password === '') {
     fwrite(STDERR, "Не задан LMS_LOGIN / LMS_PASSWORD (положите .env рядом с composer.json или экспортируйте в окружение)\n");
@@ -68,12 +86,13 @@ $logger = new Logger();
 $logger->info("Output:  $outputDir");
 $logger->info("User:    $login");
 $logger->info("Watch:   {$watchMinutes} мин".($emulateWatch ? '' : ' (только скачивание)'));
+$logger->info("Retake:  $retakeMode");
 if ($semesterFilter !== null) {
     $logger->info("Семестр: $semesterFilter");
 }
 
 $cookieFile = $root.'/cookies.json';
-$stateFile = $root.'/state.json';
+$stateFile = (string)(getenv('LMS_STATE_FILE') ?: $root.'/state.json');
 
 $client = new Client($login, $password, $cookieFile, $userAgent, $logger);
 $parser = new Parser();
@@ -86,16 +105,67 @@ if (isset($opts['discover-only'])) {
     $html = $client->getHtml('/student/up');
     $semesters = $parser->semesters($html);
 
+    $showTabs = isset($opts['tabs']);
+
     foreach ($semesters as $s) {
+        if ($semesterFilter !== null && $s['number'] !== $semesterFilter) {
+            continue;
+        }
         $mark = $s['current'] ? ' (текущий)' : '';
-        echo "\nСеместр {$s['number']}{$mark} — ".count($s['disciplines'])." дисциплин\n";
+        $debt = $s['debt'] ? ' [задолженность'.($s['debtCount'] > 0 ? ': '.$s['debtCount'] : '').']' : '';
+        echo "\nСеместр {$s['number']}{$mark}{$debt} — ".count($s['disciplines'])." дисциплин\n";
         foreach ($s['disciplines'] as $d) {
-            echo "  • [{$d['id']}] {$d['title']}\n";
+            $flag = $d['debt'] ? '!' : ' ';
+            $control = $d['control'] !== null ? " — {$d['control']}" : '';
+            echo "  $flag [{$d['id']}] {$d['title']}$control\n";
             $state->setDisciplineMeta((string)$d['id'], [
                 'title' => $d['title'],
                 'semester' => $s['number'],
                 'slug' => \Carono\LmsParser\Slug::make($d['title']),
+                'debt' => $d['debt'],
+                'control' => $d['control'],
             ]);
+
+            if (!$showTabs) {
+                continue;
+            }
+            try {
+                $discHtml = $client->getHtml($d['contentsUrl']);
+            } catch (\Throwable $e) {
+                echo "      вкладки: ошибка — ".$e->getMessage()."\n";
+                continue;
+            }
+            $tabs = $parser->disciplineTabs($discHtml);
+            if (empty($tabs)) {
+                echo "      вкладки: нет (единый набор материалов)\n";
+                continue;
+            }
+            foreach ($tabs as $t) {
+                $lessons = [];
+                if ($t['retake']) {
+                    try {
+                        $lessons = $parser->disciplineLessons(
+                            $t['active'] ? $discHtml : $client->getHtml($t['url'])
+                        )['lessons'];
+                    } catch (\Throwable) {
+                        // не критично — просто не покажем счётчик
+                    }
+                } elseif ($t['active']) {
+                    $lessons = $parser->disciplineLessons($discHtml)['lessons'];
+                }
+                $count = $lessons === []
+                    ? ''
+                    : sprintf(' — уроков: %d, заблокировано: %d',
+                        count($lessons),
+                        count(array_filter($lessons, fn($l) => $l['locked'])),
+                    );
+                printf("      %s %-12s %s%s\n",
+                    $t['active'] ? '*' : ' ',
+                    $t['label'],
+                    $t['url'],
+                    $count,
+                );
+            }
         }
     }
     exit(0);
@@ -108,6 +178,6 @@ $disciplineFilter = isset($opts['discipline']) ? (string)$opts['discipline'] : n
 $runner = new Runner(
     $client, $parser, $downloader, $scorm, $state, $logger,
     $outputDir, $watchMinutes, $emulateWatch,
-    $maxDisciplines, $maxLessons, $disciplineFilter,
+    $maxDisciplines, $maxLessons, $disciplineFilter, $retakeMode,
 );
 $runner->run($semesterFilter);

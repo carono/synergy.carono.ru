@@ -12,6 +12,9 @@ final class Client
 {
     private const BASE = 'https://lms.synergy.ru';
 
+    private const CHALLENGE_HINT = 'Сайт закрыт JS-челленджем DDoS-Guard — HTTP-клиент его не пройдёт. '
+        .'Обновите сессию браузером: ./bin/cookies';
+
     private Guzzle $http;
     private FileCookieJar $jar;
 
@@ -45,7 +48,12 @@ final class Client
         }
 
         $this->logger->info('Авторизация...');
-        $this->http->get('/');
+        try {
+            $this->assertNotChallenged((string)$this->http->get('/')->getBody());
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $this->assertNotChallenged((string)$e->getResponse()->getBody());
+            throw $e;
+        }
 
         $response = $this->http->post('/user/login', [
             'headers' => [
@@ -61,6 +69,7 @@ final class Client
         ]);
 
         $body = (string)$response->getBody();
+        $this->assertNotChallenged($body);
         $json = json_decode($body, true);
         $alert = $json['alertMessage'] ?? '';
 
@@ -109,7 +118,20 @@ final class Client
         $response = $this->http->get($url, [
             'headers' => array_merge(['Referer' => self::BASE.'/student/up'], $headers),
         ]);
-        return (string)$response->getBody();
+        $body = (string)$response->getBody();
+        $this->assertNotChallenged($body);
+        return $body;
+    }
+
+    /**
+     * DDoS-Guard отвечает 403 со своей HTML-страницей вместо запрошенной.
+     * Без этой проверки ошибка выглядит как «страница изменилась» и уводит в сторону.
+     */
+    private function assertNotChallenged(string $body): void
+    {
+        if (preg_match('~<title>\s*ddos.?guard~i', $body)) {
+            throw new \RuntimeException(self::CHALLENGE_HINT);
+        }
     }
 
     public function ajaxGet(string $url, string $referer): array

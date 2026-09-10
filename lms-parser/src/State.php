@@ -53,6 +53,18 @@ final class State
         $this->save();
     }
 
+    public function clearDisciplineSkip(string $disciplineId): void
+    {
+        if (!isset($this->data['disciplines'][$disciplineId])) {
+            return;
+        }
+        unset(
+            $this->data['disciplines'][$disciplineId]['skipped'],
+            $this->data['disciplines'][$disciplineId]['skip_reason'],
+        );
+        $this->save();
+    }
+
     public function setSummary(array $summary): void
     {
         $this->data['summary'] = $summary;

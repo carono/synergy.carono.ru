@@ -9,7 +9,10 @@ use Symfony\Component\DomCrawler\Crawler;
 final class Parser
 {
     /**
-     * @return array<int, array{number:int, label:string, current:bool, disciplines: array<int, array{id:string, title:string, contentsUrl:string}>}>
+     * @return array<int, array{
+     *     number:int, label:string, current:bool, debt:bool, debtCount:int,
+     *     disciplines: array<int, array{id:string, title:string, contentsUrl:string, debt:bool, control:?string}>
+     * }>
      */
     public function semesters(string $html): array
     {
@@ -26,6 +29,14 @@ final class Parser
 
             $tbody = new Crawler($node);
 
+            // Задолженности по семестру: иконка-алерт в строке заголовка + подсказка «Задолженностей : N»
+            $debtCount = 0;
+            $bubble = $tbody->filter('#bubble-semfail-'.$number);
+            if ($bubble->count() > 0 && preg_match('~(\d+)~', $bubble->first()->text(), $mb)) {
+                $debtCount = (int)$mb[1];
+            }
+            $semesterDebt = $debtCount > 0 || $tbody->filter('tr.semtab .icon-status-alert')->count() > 0;
+
             $disciplines = [];
             foreach ($tbody->filter('tr.discipl') as $row) {
                 $rowCrawler = new Crawler($row);
@@ -37,10 +48,23 @@ final class Parser
                 if (!preg_match('~/lntools/versiongroupassign/contents/student/(\d+)~', $href, $mm)) {
                     continue;
                 }
+
+                // Задолженность по дисциплине — иконка icon-upd-failed в столбце статуса
+                $debt = $rowCrawler->filter('td.js-status .icon-upd-failed')->count() > 0;
+
+                // Форма контроля — следующая ячейка после названия (Зачёт / Экзамен / Практика)
+                $control = null;
+                $cells = $rowCrawler->filter('td');
+                if ($cells->count() > 2) {
+                    $control = trim($cells->eq(2)->text()) ?: null;
+                }
+
                 $disciplines[] = [
                     'id' => $mm[1],
                     'title' => trim($link->first()->text()),
                     'contentsUrl' => $href,
+                    'debt' => $debt,
+                    'control' => $control,
                 ];
             }
 
@@ -48,11 +72,65 @@ final class Parser
                 'number' => $number,
                 'label' => $number.' Семестр',
                 'current' => $isCurrent,
+                'debt' => $semesterDebt,
+                'debtCount' => $debtCount,
                 'disciplines' => $disciplines,
             ];
         }
 
         return $semesters;
+    }
+
+    /**
+     * Вкладки учебных материалов на странице дисциплины (блок #tabs-events).
+     *
+     * Обычно их две: «Текущие» (основной набор, часть уроков заблокирована тестами и датами)
+     * и «Пересдача» — тот же курс, открытый целиком на период ликвидации задолженности.
+     *
+     * @return array<int, array{label:string, url:string, index:?int, active:bool, retake:bool}>
+     */
+    public function disciplineTabs(string $html): array
+    {
+        $crawler = new Crawler($html);
+        $tabs = [];
+
+        foreach ($crawler->filter('#tabs-events .item') as $item) {
+            $itemCrawler = new Crawler($item);
+            $a = $itemCrawler->filter('a')->first();
+            if ($a->count() === 0) {
+                continue;
+            }
+
+            $url = (string)($a->attr('href') ?? '');
+            if ($url === '') {
+                continue;
+            }
+            // В href есть якорь #content — для запроса он не нужен
+            $url = strtok($url, '#') ?: $url;
+
+            $label = trim($a->text());
+            $active = str_contains((string)$item->getAttribute('class'), 'active');
+
+            // Номер вкладки — последний числовой сегмент пути:
+            // /lntools/versiongroupassign/contents/student/{disciplineId}/{tab}
+            // /student/updiscipline/{package}/{version}/{n}/{tab}
+            $index = null;
+            if (preg_match('~/(\d+)$~', $url, $m)) {
+                $index = (int)$m[1];
+            }
+
+            $retake = (bool)preg_match('~пересдач~ui', $label) || ($index !== null && $index > 1);
+
+            $tabs[] = [
+                'label' => $label,
+                'url' => $url,
+                'index' => $index,
+                'active' => $active,
+                'retake' => $retake,
+            ];
+        }
+
+        return $tabs;
     }
 
     /**
