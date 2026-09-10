@@ -225,6 +225,15 @@ final class Client
             return;
         }
 
+        // Сессии в cookies.json может быть уже несколько десятков минут — тогда LMS отдаёт
+        // челлендж вместо страницы входа, и логин из PHP невозможен в принципе. Раньше
+        // прогон падал на этом с трассировкой, хотя обновиться умеет сам.
+        $this->logger->info('Сессия в cookies недействительна — обновляю браузером');
+        if ($this->refreshSession() && $this->isLoggedIn()) {
+            $this->logger->ok('Авторизация успешна (обновлённая сессия)');
+            return;
+        }
+
         $this->logger->info('Авторизация...');
         try {
             $this->assertNotChallenged((string)$this->http->get('/')->getBody());
