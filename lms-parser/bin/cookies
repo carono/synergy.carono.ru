@@ -32,12 +32,15 @@ if (is_file($envPath)) {
     }
 }
 
-$opts = getopt('', ['headless', 'playwright:', 'help']);
+$opts = getopt('', ['headless', 'playwright:', 'manual-timeout:', 'help']);
 if (isset($opts['help'])) {
     echo "Использование: ./bin/cookies [--headless] [--playwright=DIR]\n";
     echo "  обновляет cookies.json, пройдя DDoS-Guard через браузер\n";
     echo "  --headless          запустить браузер без окна (DDoS-Guard такое обычно не пропускает)\n";
     echo "  --playwright=DIR    каталог, где стоит playwright (иначе LMS_PLAYWRIGHT_DIR или ~/playwright-tests)\n";
+    echo "  --manual-timeout=N  сколько секунд ждать прохождения челленджа (default 300).\n";
+    echo "                      DDoS-Guard иногда требует ручную проверку — тогда нужно больше\n";
+    echo "                      времени и человек у открытого окна\n";
     exit(0);
 }
 
@@ -60,6 +63,9 @@ if (isset($opts['headless'])) {
 $playwrightDir = (string)($opts['playwright'] ?? getenv('LMS_PLAYWRIGHT_DIR') ?: '');
 if ($playwrightDir !== '') {
     $command[] = '--playwright='.$playwrightDir;
+}
+if (isset($opts['manual-timeout'])) {
+    $command[] = '--manual-timeout='.(int)$opts['manual-timeout'];
 }
 
 $logger->info('Запускаю браузер для прохождения DDoS-Guard...');

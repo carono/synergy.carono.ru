@@ -77,20 +77,38 @@ try {
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 90000 });
 
   // Челлендж перезагружает страницу сам; ждём, пока в title перестанет быть DDoS-Guard.
-  // Ждём щедро: скрипт вызывается и посреди прогона, когда 20 закачек занимают канал,
+  // Ждём щедро: скрипт вызывается и посреди прогона, когда закачки занимают канал,
   // и челлендж, проходивший вживую за 80 с, на загруженной сети не успевал за 90.
+  //
+  // Отдельный случай — «Complete the manual check to continue»: автоматически такой
+  // челлендж не проходится вообще, нужен человек у открытого окна. Тогда ждём дольше и
+  // говорим об этом прямо, вместо того чтобы упасть по таймауту.
+  const limitSeconds = Number(args['manual-timeout'] ?? 300);
   let passed = false;
-  for (let i = 0; i < 100; i++) {
+  let manualAsked = false;
+  for (let i = 0; i < Math.ceil(limitSeconds / 3); i++) {
     if (!/ddos.?guard/i.test(await page.title())) {
       passed = true;
       break;
+    }
+    if (!manualAsked && !args.headless) {
+      const text = await page.evaluate(() => document.body?.innerText ?? '').catch(() => '');
+      if (/manual check|could not verify your browser/i.test(text)) {
+        manualAsked = true;
+        console.error(
+          'DDoS-Guard требует ручную проверку: пройдите её в открытом окне браузера. '
+          + `Жду до ${limitSeconds} с.`
+        );
+      }
     }
     await page.waitForTimeout(3000);
   }
   if (!passed) {
     console.error(
-      'DDoS-Guard не пропустил за 300 с. Возможные причины: запущено с --headless '
-      + '(такое окно он не пускает, нужен DISPLAY) либо канал занят и страница не грузится.'
+      `DDoS-Guard не пропустил за ${limitSeconds} с. Возможные причины: запущено с --headless `
+      + '(такое окно он не пускает, нужен DISPLAY); канал занят и страница не грузится; '
+      + 'либо включена ручная проверка — тогда нужен человек у окна '
+      + '(./bin/cookies --manual-timeout=600).'
     );
     process.exit(4);
   }
