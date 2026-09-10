@@ -6,6 +6,8 @@ namespace Carono\LmsParser;
 
 use GuzzleHttp\Client as Guzzle;
 use GuzzleHttp\Cookie\FileCookieJar;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
 use Psr\Http\Message\ResponseInterface;
 
 final class Client
@@ -36,6 +38,25 @@ final class Client
      */
     private const NETWORK_PAUSES = [5, 15, 45, 90, 180, 300, 300];
 
+    /**
+     * Троттлинг запросов к самой LMS.
+     *
+     * Бан прилетал не от одного тяжёлого запроса, а от плотности: час разбора уроков
+     * без пауз — и DDoS-Guard закрывает адрес на минуты. Держим паузу между запросами
+     * и потолок в минуту, оба со случайным разбросом: ровный ритм машины заметнее, чем
+     * рваный ритм человека.
+     */
+    private const MIN_GAP_MS = 900;
+    private const MAX_PER_MINUTE = 30;
+
+    /** Пауза между запросами, мс (можно снизить через LMS_MIN_GAP_MS). */
+    private int $minGapMs;
+    /** Потолок запросов в минуту (LMS_MAX_PER_MIN). */
+    private int $maxPerMinute;
+    /** Отметки времени запросов за последнюю минуту. @var list<float> */
+    private array $requestTimes = [];
+    private float $lastRequestAt = 0.0;
+
     private Guzzle $http;
     private FileCookieJar $jar;
     private int $lastRefresh = 0;
@@ -56,6 +77,8 @@ final class Client
         private readonly Logger $logger,
     ) {
         $this->sessionSince = is_file($cookieFile) ? (int)filemtime($cookieFile) : time();
+        $this->minGapMs = max(0, (int)(getenv('LMS_MIN_GAP_MS') ?: self::MIN_GAP_MS));
+        $this->maxPerMinute = max(1, (int)(getenv('LMS_MAX_PER_MIN') ?: self::MAX_PER_MINUTE));
         $this->buildHttp();
     }
 
@@ -93,7 +116,17 @@ final class Client
     private function buildHttp(): void
     {
         $this->jar = new FileCookieJar($this->cookieFile, true);
+
+        // Троттлинг стоит на уровне обработчика, а не в отдельных методах: так под него
+        // попадают все запросы, включая проверку авторизации и форму входа.
+        $stack = HandlerStack::create();
+        $stack->push(Middleware::mapRequest(function ($request) {
+            $this->throttle();
+            return $request;
+        }));
+
         $this->http = new Guzzle([
+            'handler' => $stack,
             'base_uri' => self::BASE.'/',
             'cookies' => $this->jar,
             'allow_redirects' => ['max' => 8, 'track_redirects' => true],
@@ -204,6 +237,45 @@ final class Client
      * @param callable():T $request
      * @return T
      */
+    /**
+     * Придержать запрос, если бьём в LMS слишком часто.
+     *
+     * Две границы сразу: минимальный зазор между соседними запросами и потолок за
+     * скользящую минуту. Обе с джиттером — иначе получается метроном, по которому
+     * автоматику видно за версту.
+     */
+    private function throttle(): void
+    {
+        $now = microtime(true);
+        $this->requestTimes = array_values(array_filter(
+            $this->requestTimes,
+            static fn(float $t): bool => $now - $t < 60.0
+        ));
+
+        // Потолок за минуту: ждём, пока из окна не выпадет самый старый запрос.
+        if (count($this->requestTimes) >= $this->maxPerMinute) {
+            $wait = 60.0 - ($now - $this->requestTimes[0]) + (mt_rand(200, 1500) / 1000);
+            if ($wait > 0) {
+                usleep((int)($wait * 1_000_000));
+            }
+            $now = microtime(true);
+            $this->requestTimes = array_values(array_filter(
+                $this->requestTimes,
+                static fn(float $t): bool => $now - $t < 60.0
+            ));
+        }
+
+        // Зазор между соседними запросами — половина-полтора от базового.
+        $gap = ($this->minGapMs * mt_rand(50, 150) / 100) / 1000;
+        $since = $now - $this->lastRequestAt;
+        if ($this->lastRequestAt > 0.0 && $since < $gap) {
+            usleep((int)(($gap - $since) * 1_000_000));
+        }
+
+        $this->lastRequestAt = microtime(true);
+        $this->requestTimes[] = $this->lastRequestAt;
+    }
+
     private function retryOnExpiry(callable $request): mixed
     {
         for ($attempt = 1; ; $attempt++) {

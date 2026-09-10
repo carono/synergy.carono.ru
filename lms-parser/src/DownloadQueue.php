@@ -45,7 +45,19 @@ final class DownloadQueue
      * челлендж вместо файла — воркеры падали с 403, а родитель на каждый такой ответ шёл
      * обновлять сессию, хотя дело было не в ней.
      */
-    private const HOST_LIMITS = ['lms.synergy.ru' => 3];
+    private const HOST_LIMITS = ['lms.synergy.ru' => 2];
+
+    /**
+     * Минимальная пауза между запусками закачек с одного хоста, секунды.
+     *
+     * Лимита параллелизма мало: три коротких PDF подряд укладываются в секунду и с точки
+     * зрения защиты выглядят так же, как три одновременных. CDN этим не тревожат — там
+     * бан не выдают, поэтому пауза только для самой LMS.
+     */
+    private const HOST_START_GAPS = ['lms.synergy.ru' => 1.5];
+
+    /** Когда последний раз стартовала закачка с этого хоста. @var array<string, float> */
+    private array $lastStart = [];
 
     private bool $stopping = false;
     /** Пока true, новые закачки не стартуют — на время обновления сессии. */
@@ -129,7 +141,7 @@ final class DownloadQueue
                 $pick = null;
                 foreach ($queue as $k => $candidate) {
                     $host = self::hostOf($candidate['url']);
-                    if (($hostRunning[$host] ?? 0) < $this->limitFor($host)) {
+                    if (($hostRunning[$host] ?? 0) < $this->limitFor($host) && $this->hostReady($host)) {
                         $pick = $k;
                         break;
                     }
@@ -218,7 +230,10 @@ final class DownloadQueue
                 ));
             }
 
-            if ($running !== []) {
+            // Спим и когда работы нет, но очередь не пуста: задания могут ждать паузы
+            // между обращениями к хосту, и без этого цикл крутился бы вхолостую на
+            // полном ядре.
+            if ($running !== [] || $queue !== []) {
                 usleep(300_000);
             }
         }
@@ -293,12 +308,15 @@ final class DownloadQueue
         fclose($pipes[0]);
         stream_set_blocking($pipes[1], false);
 
+        $host = self::hostOf($job['url']);
+        $this->lastStart[$host] = microtime(true);
+
         return [
             'proc' => $proc,
             'stdout' => $pipes[1],
             'buffer' => '',
             'job' => $job,
-            'host' => self::hostOf($job['url']),
+            'host' => $host,
         ];
     }
 
@@ -391,6 +409,22 @@ final class DownloadQueue
     private static function hostOf(string $url): string
     {
         return strtolower((string)parse_url($url, PHP_URL_HOST));
+    }
+
+    /**
+     * Не пора ли снова трогать этот хост.
+     *
+     * Возвращает false, если с прошлого старта прошло меньше положенной паузы. Джиттер
+     * ±30% — чтобы очередь не стучалась в LMS ровно по метроному.
+     */
+    private function hostReady(string $host): bool
+    {
+        $gap = self::HOST_START_GAPS[$host] ?? 0.0;
+        if ($gap <= 0.0) {
+            return true;
+        }
+        $last = $this->lastStart[$host] ?? 0.0;
+        return microtime(true) - $last >= $gap * (mt_rand(70, 130) / 100);
     }
 
     private function limitFor(string $host): int
