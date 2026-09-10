@@ -18,9 +18,18 @@ final class Client
     /** Не чаще одного обновления в минуту: браузерный челлендж занимает ~80 секунд. */
     private const REFRESH_COOLDOWN = 60;
 
+    /**
+     * Сколько обновлений подряд пробуем, пока ни один запрос между ними не прошёл.
+     * Если и после третьего LMS отвечает 403 — дело не в сессии, и молотить челлендж
+     * дальше значит только злить DDoS-Guard.
+     */
+    private const REFRESH_MAX_STREAK = 3;
+
     private Guzzle $http;
     private FileCookieJar $jar;
     private int $lastRefresh = 0;
+    /** Обновлений подряд без успешного запроса между ними. */
+    private int $refreshStreak = 0;
 
     public function __construct(
         private readonly string $login,
@@ -60,11 +69,25 @@ final class Client
      */
     public function refreshSession(): bool
     {
-        $now = time();
-        if ($now - $this->lastRefresh < self::REFRESH_COOLDOWN) {
+        if ($this->refreshStreak >= self::REFRESH_MAX_STREAK) {
+            $this->logger->warn(sprintf(
+                'Сессия не восстановилась за %d обновления подряд — больше не пробую',
+                self::REFRESH_MAX_STREAK,
+            ));
             return false;
         }
+
+        // Backoff: каждое следующее обновление подряд ждёт вдвое дольше — 60, 120, 240 с.
+        $now = time();
+        $cooldown = self::REFRESH_COOLDOWN << $this->refreshStreak;
+        $wait = $this->lastRefresh + $cooldown - $now;
+        if ($this->lastRefresh > 0 && $wait > 0) {
+            $this->logger->info("Жду {$wait} с перед следующим обновлением сессии");
+            sleep($wait);
+            $now = time();
+        }
         $this->lastRefresh = $now;
+        $this->refreshStreak++;
 
         if ((string)getenv('DISPLAY') === '') {
             $this->logger->warn('Сессия LMS протухла, но DISPLAY не задан — обновить cookies браузером нельзя');
@@ -123,12 +146,17 @@ final class Client
     private function retryOnExpiry(callable $request): mixed
     {
         try {
-            return $request();
+            $result = $request();
+            $this->refreshStreak = 0;
+            return $result;
         } catch (\Throwable $e) {
             if (!$this->looksExpired($e) || !$this->refreshSession()) {
                 throw $e;
             }
-            return $request();
+            $result = $request();
+            // Запрос прошёл — серия обновлений закончилась, следующий сбой начнёт отсчёт заново.
+            $this->refreshStreak = 0;
+            return $result;
         }
     }
 
