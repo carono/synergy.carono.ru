@@ -36,7 +36,7 @@ if (is_file($envPath)) {
 $opts = getopt('', [
     'semester:', 'discover-only', 'no-watch', 'minutes:',
     'max-disciplines:', 'max-lessons:', 'discipline:',
-    'retake::', 'no-retake', 'tabs', 'redo', 'threads:', 'help',
+    'retake::', 'no-retake', 'tabs', 'redo', 'threads:', 'pid-file:', 'help',
 ]);
 if (isset($opts['help'])) {
     echo "Использование: ./bin/parse [--semester=N] [--discover-only] [--no-watch] [--minutes=N]\n";
@@ -54,6 +54,7 @@ if (isset($opts['help'])) {
     echo "  --no-retake              то же, что --retake=off\n";
     echo "  --tabs                   вместе с --discover-only: открыть каждую дисциплину и показать её вкладки материалов\n";
     echo "  --threads=N              сколько файлов качать одновременно (default 4, 1 — последовательно)\n";
+    echo "  --pid-file=PATH          записать свой PID (для остановки прогона без pkill по шаблону)\n";
     echo "  --redo                   не доверять отметкам done в state.json и открыть уроки заново\n";
     echo "                           (нужно, если прошлый прогон забирал не все типы материалов; файлы на диске не перекачиваются)\n";
     exit(0);
@@ -91,6 +92,12 @@ if ($login === '' || $password === '') {
 
 if (!str_starts_with($outputDir, '/') && !preg_match('~^[A-Za-z]:~', $outputDir)) {
     $outputDir = $root.'/'.ltrim($outputDir, './');
+}
+
+// PID пишет сам процесс: $! из шелла указывает на обёртку setsid, а не на парсер,
+// и остановка по нему не доходит до дочерних загрузок.
+if (isset($opts['pid-file'])) {
+    file_put_contents((string)$opts['pid-file'], (string)getmypid());
 }
 
 $logger = new Logger();

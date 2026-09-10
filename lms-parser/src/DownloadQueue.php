@@ -34,12 +34,19 @@ final class DownloadQueue
      * @param array<int, array{url:string, dest:string, label:string}> $jobs
      * @return array<string, bool> результат по каждому dest
      */
+    /** @var array<int, array{proc:resource}> процессы, которые надо добить при остановке */
+    private array $active = [];
+
+    private bool $stopping = false;
+
     public function run(array $jobs): array
     {
         $results = [];
         if ($jobs === []) {
             return $results;
         }
+
+        $this->installSignalHandlers();
 
         $queue = array_values($jobs);
         $total = count($queue);
@@ -52,7 +59,16 @@ final class DownloadQueue
         $this->logger->info(sprintf('Очередь загрузок: %d файлов, потоков %d', $total, $this->concurrency));
 
         while ($queue !== [] || $running !== []) {
-            while ($queue !== [] && count($running) < $this->concurrency) {
+            if (function_exists('pcntl_signal_dispatch')) {
+                pcntl_signal_dispatch();
+            }
+            if ($this->stopping) {
+                $this->terminateAll($running);
+                $this->logger->warn('Остановка: дочерние загрузки прерваны, .part сохранены для докачки');
+                return $results;
+            }
+
+            while ($queue !== [] && !$this->stopping && count($running) < $this->concurrency) {
                 $job = array_shift($queue);
                 $handle = $this->start($job);
                 if ($handle === null) {
@@ -61,6 +77,7 @@ final class DownloadQueue
                     continue;
                 }
                 $running[] = $handle;
+                $this->active[] = $handle;
             }
 
             foreach ($running as $i => $handle) {
@@ -110,6 +127,51 @@ final class DownloadQueue
         }
 
         return $results;
+    }
+
+    /**
+     * Без этого при падении или остановке родителя воркеры остаются сиротами и
+     * продолжают качать: несколько прогонов начинают тянуть одни и те же файлы.
+     */
+    private function installSignalHandlers(): void
+    {
+        if (!function_exists('pcntl_signal')) {
+            $this->logger->warn('pcntl недоступен — дочерние загрузки не остановятся сами при завершении');
+            return;
+        }
+
+        $handler = function (): void {
+            $this->stopping = true;
+        };
+        pcntl_signal(SIGTERM, $handler);
+        pcntl_signal(SIGINT, $handler);
+        pcntl_signal(SIGHUP, $handler);
+    }
+
+    /** @param array<int, array{proc:resource, stdout:resource}> $running */
+    private function terminateAll(array $running): void
+    {
+        foreach ($running as $handle) {
+            if (is_resource($handle['proc'])) {
+                proc_terminate($handle['proc'], SIGTERM);
+            }
+        }
+        // Даём воркерам закрыть файлы, потом добиваем оставшихся
+        usleep(500_000);
+        foreach ($running as $handle) {
+            if (!is_resource($handle['proc'])) {
+                continue;
+            }
+            $status = proc_get_status($handle['proc']);
+            if ($status['running']) {
+                proc_terminate($handle['proc'], SIGKILL);
+            }
+            if (is_resource($handle['stdout'])) {
+                fclose($handle['stdout']);
+            }
+            proc_close($handle['proc']);
+        }
+        $this->active = [];
     }
 
     /**

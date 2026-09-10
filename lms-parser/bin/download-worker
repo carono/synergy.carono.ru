@@ -28,6 +28,10 @@ $userAgent = (string)(getenv('LMS_USER_AGENT')
 
 $cookieFile = (string)(getenv('LMS_COOKIE_FILE') ?: $root.'/cookies.json');
 
-$downloader = new Downloader(new Logger(false), $userAgent, $cookieFile);
+// Если родитель умер, продолжать закачку нельзя: сирота продолжит тянуть файл,
+// который следующий прогон начнёт качать заново, и оба будут писать в один .part.
+$parentGone = static fn(): bool => function_exists('posix_getppid') && posix_getppid() === 1;
+
+$downloader = new Downloader(new Logger(false), $userAgent, $cookieFile, $parentGone);
 
 exit($downloader->download((string)$job['url'], (string)$job['dest']) ? 0 : 1);

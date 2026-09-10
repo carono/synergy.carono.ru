@@ -20,10 +20,15 @@ final class Downloader
 
     private Guzzle $http;
 
+    /**
+     * @param (callable():bool)|null $shouldAbort проверка «пора прекращать» —
+     *        вызывается по ходу закачки, чтобы осиротевший воркер не тянул файл дальше
+     */
     public function __construct(
         private readonly Logger $logger,
         string $userAgent,
         ?string $cookieFile = null,
+        private readonly mixed $shouldAbort = null,
     ) {
         $config = [
             'headers' => [
@@ -146,6 +151,9 @@ final class Downloader
                 RequestOptions::PROGRESS => function ($total, $down) use (&$progressLast, $existing, $totalSize, $startTime) {
                     if ($down === 0) {
                         return;
+                    }
+                    if ($this->shouldAbort !== null && ($this->shouldAbort)()) {
+                        throw new \RuntimeException('закачка прервана: родительский процесс завершился');
                     }
                     $now = microtime(true);
                     if ($now - $progressLast < 1.0) {
