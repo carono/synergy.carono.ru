@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Carono\LmsParser;
 
 use GuzzleHttp\Client as Guzzle;
-use GuzzleHttp\Cookie\FileCookieJar;
+use GuzzleHttp\Cookie\CookieJar;
 use GuzzleHttp\RequestOptions;
 
 final class Downloader
@@ -42,8 +42,13 @@ final class Downloader
 
         // Часть материалов лежит не в CDN, а на самой lms.synergy.ru — без cookie
         // сессии оттуда приходит 403 DDoS-Guard вместо файла.
+        //
+        // Читаем файл, но не пишем в него: FileCookieJar сохраняет содержимое в
+        // деструкторе, и воркер, стартовавший до обновления сессии, затирал бы свежие
+        // cookies протухшими.
         if ($cookieFile !== null && is_file($cookieFile)) {
-            $config['cookies'] = new FileCookieJar($cookieFile, true);
+            $saved = json_decode((string)file_get_contents($cookieFile), true);
+            $config['cookies'] = new CookieJar(false, is_array($saved) ? $saved : []);
         }
 
         $this->http = new Guzzle($config);
