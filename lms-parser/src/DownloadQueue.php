@@ -36,6 +36,10 @@ final class DownloadQueue
     }
 
     private bool $stopping = false;
+    /** Пока true, новые закачки не стартуют — на время обновления сессии. */
+    private bool $paused = false;
+    /** @var array<int, int> pid'ы работающих воркеров: их надо уметь заморозить */
+    private array $activePids = [];
 
     /**
      * @param array<int, array{url:string, dest:string, label:string}> $jobs стартовые задания
@@ -98,7 +102,7 @@ final class DownloadQueue
                 }
             }
 
-            while ($queue !== [] && !$this->stopping && count($running) < $this->concurrency) {
+            while ($queue !== [] && !$this->stopping && !$this->paused && count($running) < $this->concurrency) {
                 $job = array_shift($queue);
                 $handle = $this->start($job);
                 if ($handle === null) {
@@ -107,6 +111,10 @@ final class DownloadQueue
                     continue;
                 }
                 $running[] = $handle;
+                $pid = proc_get_status($handle['proc'])['pid'] ?? null;
+                if ($pid !== null) {
+                    $this->activePids[] = $pid;
+                }
             }
 
             foreach ($running as $i => $handle) {
@@ -120,6 +128,8 @@ final class DownloadQueue
                 $this->drain($running[$i]);
                 fclose($running[$i]['stdout']);
                 proc_close($handle['proc']);
+
+                $this->activePids = array_values(array_diff($this->activePids, [$status['pid'] ?? 0]));
 
                 $ok = $status['exitcode'] === 0;
                 $results[$handle['job']['dest']] = $ok;
@@ -258,6 +268,37 @@ final class DownloadQueue
             }
         }
         return $keep;
+    }
+
+    /**
+     * Приостановить закачки: новые не стартуют, работающие замирают по SIGSTOP.
+     *
+     * Нужно на время прохождения челленджа DDoS-Guard: он грузит страницу через тот же
+     * канал, и на двадцати параллельных закачках не успевает за отведённое время. Стоп
+     * безопасен — воркер держит свой `.part`, а после SIGCONT докачивает по Range.
+     */
+    public function pause(): void
+    {
+        $this->paused = true;
+        if (!function_exists('posix_kill')) {
+            return;
+        }
+        foreach ($this->activePids as $pid) {
+            @posix_kill($pid, SIGSTOP);
+        }
+        $this->logger->info(sprintf('Закачки приостановлены (%d процессов)', count($this->activePids)));
+    }
+
+    /** Вернуть полный параллелизм после обновления сессии. */
+    public function resume(): void
+    {
+        if (function_exists('posix_kill')) {
+            foreach ($this->activePids as $pid) {
+                @posix_kill($pid, SIGCONT);
+            }
+        }
+        $this->paused = false;
+        $this->logger->info('Закачки продолжены');
     }
 
     /** @param array<int, array{dest:string}> $jobs */

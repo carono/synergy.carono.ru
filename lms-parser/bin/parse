@@ -194,11 +194,20 @@ $maxDisciplines = isset($opts['max-disciplines']) ? (int)$opts['max-disciplines'
 $maxLessons = isset($opts['max-lessons']) ? (int)$opts['max-lessons'] : null;
 $disciplineFilter = isset($opts['discipline']) ? (string)$opts['discipline'] : null;
 
+$queue = new DownloadQueue($logger, $root.'/bin/download-worker', $threads);
+
+// Челлендж DDoS-Guard грузит страницу через тот же канал, что и закачки, и на полном
+// параллелизме не успевал пройти. Поэтому на время обновления сессии канал освобождается.
+$client->useDownloadHooks(
+    static fn() => $queue->pause(),
+    static fn() => $queue->resume(),
+);
+
 $runner = new Runner(
     $client, $parser, $downloader, $scorm, $state, $logger,
     $outputDir, $watchMinutes, $emulateWatch,
     $maxDisciplines, $maxLessons, $disciplineFilter, $retakeMode,
     isset($opts['redo']),
-    new DownloadQueue($logger, $root.'/bin/download-worker', $threads),
+    $queue,
 );
 $runner->run($semesterFilter);

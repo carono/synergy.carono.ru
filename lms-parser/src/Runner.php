@@ -76,8 +76,12 @@ final class Runner
             ));
         }
 
-        $stats = ['downloaded' => 0, 'skipped' => 0, 'failed' => 0, 'disciplines' => 0, 'retakes' => 0];
+        $stats = [
+            'downloaded' => 0, 'skipped' => 0, 'failed' => 0,
+            'disciplines' => 0, 'withMaterials' => 0, 'retakes' => 0,
+        ];
 
+        $candidates = [];
         foreach ($target['disciplines'] as $discipline) {
             if ($this->disciplineFilter !== null
                 && stripos($discipline['title'], $this->disciplineFilter) === false
@@ -85,9 +89,17 @@ final class Runner
             ) {
                 continue;
             }
+            $candidates[] = $discipline;
+        }
+        $stats['candidates'] = count($candidates);
+
+        foreach ($candidates as $discipline) {
             if ($this->maxDisciplines !== null && $stats['disciplines'] >= $this->maxDisciplines) {
                 break;
             }
+            // Пауза между дисциплинами — единственное место, где канал свободен и обновление
+            // сессии ничего не тормозит. Протухнуть посреди дисциплины дороже.
+            $this->client->refreshIfStale();
             $stats['disciplines']++;
             $this->processDiscipline($target, $discipline, $stats);
         }
@@ -98,9 +110,13 @@ final class Runner
             'stats' => $stats,
         ]);
 
+        // Раньше в отчёт шло число пройденных записей семестра, включая практику без
+        // материалов, — цифра выглядела как «дисциплин обработано» и вводила в заблуждение.
         $this->logger->ok(sprintf(
-            'Готово. Дисциплин: %d (через пересдачу: %d), скачано: %d, пропущено: %d, ошибок: %d',
-            $stats['disciplines'], $stats['retakes'], $stats['downloaded'], $stats['skipped'], $stats['failed']
+            'Готово. Дисциплин пройдено: %d из %d, из них с материалами: %d (через пересдачу: %d). '
+            .'Скачано файлов: %d, пропущено: %d, ошибок: %d',
+            $stats['disciplines'], $stats['candidates'], $stats['withMaterials'], $stats['retakes'],
+            $stats['downloaded'], $stats['skipped'], $stats['failed']
         ));
     }
 
@@ -170,6 +186,10 @@ final class Runner
             $semester['number'],
             Slug::make($title),
         );
+
+        if ($lessons !== []) {
+            $stats['withMaterials']++;
+        }
 
         $this->logger->info(sprintf('Уроков: %d (заблокированных: %d)%s',
             count($lessons),

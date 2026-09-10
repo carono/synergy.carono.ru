@@ -30,6 +30,12 @@ final class Client
     private int $lastRefresh = 0;
     /** Обновлений подряд без успешного запроса между ними. */
     private int $refreshStreak = 0;
+    /** Когда сессия получена — от этого считается её возраст. */
+    private int $sessionSince = 0;
+    /** @var (callable():void)|null освободить канал перед челленджем */
+    private $pauseHook = null;
+    /** @var (callable():void)|null вернуть параллелизм после челленджа */
+    private $resumeHook = null;
 
     public function __construct(
         private readonly string $login,
@@ -38,7 +44,39 @@ final class Client
         private readonly string $userAgent,
         private readonly Logger $logger,
     ) {
+        $this->sessionSince = is_file($cookieFile) ? (int)filemtime($cookieFile) : time();
         $this->buildHttp();
+    }
+
+    /**
+     * Что делать с закачками на время обновления сессии.
+     *
+     * Челлендж DDoS-Guard грузит страницу через тот же канал, что и закачки: на двадцати
+     * параллельных потоках он не успевал пройти за отведённое время, и обновление
+     * проваливалось. Поэтому канал на это время освобождается.
+     */
+    public function useDownloadHooks(callable $pause, callable $resume): void
+    {
+        $this->pauseHook = $pause;
+        $this->resumeHook = $resume;
+    }
+
+    /**
+     * Обновить сессию заранее, если она старше указанного срока.
+     *
+     * Протухание посреди дисциплины стоит дорого: реактивное обновление ловит уже
+     * начавшийся поток 403. Под нагрузкой сессия живёт около 20 минут, поэтому в паузе
+     * между дисциплинами дешевле обновиться самим.
+     */
+    public function refreshIfStale(int $maxAgeSeconds = 900): void
+    {
+        $age = time() - $this->sessionSince;
+        if ($age < $maxAgeSeconds) {
+            return;
+        }
+        $this->logger->info(sprintf('Сессии %d мин — обновляю заранее, не дожидаясь 403', intdiv($age, 60)));
+        $this->refreshStreak = 0;
+        $this->refreshSession();
     }
 
     private function buildHttp(): void
@@ -94,7 +132,11 @@ final class Client
             return false;
         }
 
-        $this->logger->warn('Сессия LMS протухла — обновляю cookies браузером...');
+        $this->logger->warn('Обновляю сессию LMS браузером...');
+
+        if ($this->pauseHook !== null) {
+            ($this->pauseHook)();
+        }
 
         // FileCookieJar пишет содержимое в деструкторе. Если не опустошить старую банку,
         // она затрёт файл, который прямо сейчас перезапишет ./bin/cookies.
@@ -116,6 +158,9 @@ final class Client
         $process = proc_open([PHP_BINARY, $root.'/bin/cookies'], $descriptors, $pipes, $root, $env);
         if (!is_resource($process)) {
             $this->buildHttp();
+            if ($this->resumeHook !== null) {
+                ($this->resumeHook)();
+            }
             $this->logger->warn('Не удалось запустить ./bin/cookies');
             return false;
         }
@@ -126,11 +171,16 @@ final class Client
 
         $this->buildHttp();
 
+        if ($this->resumeHook !== null) {
+            ($this->resumeHook)();
+        }
+
         if ($code !== 0) {
             $this->logger->warn('./bin/cookies завершился с кодом '.$code.': '.trim($out));
             return false;
         }
 
+        $this->sessionSince = time();
         $this->logger->ok('Сессия LMS обновлена');
         return true;
     }
