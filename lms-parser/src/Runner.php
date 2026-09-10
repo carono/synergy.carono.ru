@@ -28,6 +28,7 @@ final class Runner
         private readonly ?string $disciplineFilter = null,
         private readonly string $retakeMode = self::RETAKE_AUTO,
         private readonly bool $redo = false,
+        private readonly ?DownloadQueue $queue = null,
     ) {
     }
 
@@ -191,6 +192,8 @@ final class Runner
 
         $disciplineDoneCount = 0;
         $disciplineProcessed = 0;
+        /** @var array<int, array<string, mixed>> $plans */
+        $plans = [];
 
         foreach ($lessons as $lesson) {
             if ($this->maxLessons !== null && $disciplineProcessed >= $this->maxLessons) {
@@ -238,14 +241,62 @@ final class Runner
             }
             $minutesForThis = $nextRequired ?? $this->watchedMinutes;
 
-            $ok = $this->processLesson($disciplineDir, $code, $lessonTitle, $lesson, $stats, $minutesForThis);
-            if ($ok) {
-                $this->state->markLessonDone($id, $lesson['resourceId'], [
-                    'code' => $code,
-                    'title' => $lessonTitle,
-                ]);
-                $disciplineDoneCount++;
+            // Фаза 1: разбираем урок и собираем задания на закачку. Запросы к LMS
+            // дешёвые и идут последовательно — сессия одна, параллелить её незачем.
+            $plan = $this->resolveLesson($disciplineDir, $code, $lessonTitle, $lesson, $stats);
+            if ($plan === null) {
+                continue;
             }
+            $plan['minutes'] = $minutesForThis;
+            $plans[] = $plan;
+        }
+
+        // Фаза 2: качаем всё собранное пулом процессов.
+        $jobs = [];
+        foreach ($plans as $plan) {
+            foreach ($plan['jobs'] as $job) {
+                $jobs[] = $job;
+            }
+        }
+        $results = $this->queue !== null
+            ? $this->queue->run($jobs)
+            : $this->downloadSequentially($jobs);
+
+        // Фаза 3: закрываем только те уроки, у которых забрано ВСЁ.
+        foreach ($plans as $plan) {
+            $failed = 0;
+            foreach ($plan['jobs'] as $job) {
+                if (($results[$job['dest']] ?? false) === true) {
+                    $stats['downloaded']++;
+                } else {
+                    $failed++;
+                }
+            }
+
+            if ($failed > 0) {
+                $stats['failed'] += $failed;
+                $this->logger->warn(sprintf(
+                    '[%s] Забрано %d из %d — оставляю урок незакрытым для повторного прохода',
+                    $plan['code'], count($plan['jobs']) - $failed, count($plan['jobs'])
+                ));
+                continue;
+            }
+
+            if ($plan['jobs'] === [] && $plan['links'] === 0) {
+                continue;
+            }
+
+            if ($this->emulateWatch) {
+                $this->markWatched($plan['code'], $plan['ctx'], $plan['referer'], $plan['minutes']);
+            }
+
+            $this->state->markLessonDone($id, $plan['resourceId'], [
+                'code' => $plan['code'],
+                'title' => $plan['title'],
+                'files' => count($plan['jobs']),
+                'links' => $plan['links'],
+            ]);
+            $disciplineDoneCount++;
         }
 
         $this->logger->ok(sprintf(
@@ -254,6 +305,21 @@ final class Runner
             $viaRetake ? ' (пересдача)' : '',
             $disciplineDoneCount,
         ));
+    }
+
+    /**
+     * Последовательная закачка — резервный путь, если очередь не задана.
+     *
+     * @param array<int, array{url:string, dest:string, label:string}> $jobs
+     * @return array<string, bool>
+     */
+    private function downloadSequentially(array $jobs): array
+    {
+        $results = [];
+        foreach ($jobs as $job) {
+            $results[$job['dest']] = $this->downloader->download($job['url'], $job['dest']);
+        }
+        return $results;
     }
 
     /**
@@ -291,8 +357,24 @@ final class Runner
         return ($hasDebt || $hasLocked) ? $retakeTab : null;
     }
 
-    private function processLesson(string $disciplineDir, string $code, string $title, array $lesson, array &$stats, int $watchMinutes): bool
-    {
+    /**
+     * Разбирает урок и готовит план: что скачать и куда, сколько внешних ссылок записано.
+     *
+     * Сама закачка здесь не выполняется — она уходит в {@see DownloadQueue}, поэтому
+     * файлы разных уроков тянутся параллельно.
+     *
+     * @return array{
+     *     code:string, title:string, resourceId:string, ctx:array<string,mixed>,
+     *     referer:string, links:int, jobs:array<int, array{url:string, dest:string, label:string}>
+     * }|null
+     */
+    private function resolveLesson(
+        string $disciplineDir,
+        string $code,
+        string $title,
+        array $lesson,
+        array &$stats,
+    ): ?array {
         $this->logger->info("[$code] $title");
 
         try {
@@ -303,70 +385,66 @@ final class Runner
         } catch (\Throwable $e) {
             $this->logger->err("[$code] Ошибка открытия урока: ".$e->getMessage());
             $stats['failed']++;
-            return false;
+            return null;
         }
 
         $ctx = $this->parser->learningContext($lessonHtml);
         if ($ctx['learningPackageId'] === '') {
             $this->logger->warn("[$code] Не нашёл learningPackageId — это, видимо, не видео-урок");
             $stats['skipped']++;
-            return false;
+            return null;
         }
 
         if ($ctx['firstItemId'] === null) {
             $this->logger->warn("[$code] Нет tocItem — пропускаю");
             $stats['skipped']++;
-            return false;
+            return null;
         }
 
         $referer = 'https://lms.synergy.ru/learning/view/'.$ctx['learningPackageId'];
 
-        // 1. Получаем itemLink через navigation_request/choice
         try {
             $opened = $this->scorm->chooseItem($ctx['firstItemId'], $ctx['learningPackageId'], $referer);
         } catch (\Throwable $e) {
             $this->logger->err("[$code] navigation_request: ".$e->getMessage());
             $stats['failed']++;
-            return false;
+            return null;
         }
 
         $itemLink = $opened['itemLink'] ?? null;
         if ($itemLink === null) {
             $this->logger->warn("[$code] Сервер не отдал itemLink (возможно, тест/документ)");
             $stats['skipped']++;
-            return false;
+            return null;
         }
 
-        // 2. Получаем содержимое iframe
         try {
             $itemHtml = $this->client->getHtml($itemLink, ['Referer' => $referer]);
         } catch (\Throwable $e) {
             $this->logger->err("[$code] Не открыть iframe: ".$e->getMessage());
             $stats['failed']++;
-            return false;
+            return null;
         }
 
-        // 3. Забираем всё, что есть в материале: видео, файлы (pdf/zip/...) и внешние ссылки
         $materials = $this->parser->materials($itemHtml);
         if ($materials === []) {
             $this->logger->warn("[$code] В материале нечего забрать (пустая страница или тест)");
             $stats['skipped']++;
             if ($this->emulateWatch) {
-                $this->markWatched($code, $ctx, $referer, $watchMinutes);
+                $this->markWatched($code, $ctx, $referer, $this->watchedMinutes);
             }
-            return true;
+            return null;
         }
 
         $base = Slug::make($code.' '.$title);
-        $saved = 0;
-        $failedHere = 0;
+        $jobs = [];
+        $links = 0;
         $fileIndex = 0;
 
         foreach ($materials as $material) {
             if ($material['kind'] === 'link') {
                 $this->saveLink($disciplineDir, $code, $title, $material['url']);
-                $this->logger->ok("[$code] Внешняя ссылка записана в materials.md");
-                $saved++;
+                $links++;
                 continue;
             }
 
@@ -374,35 +452,27 @@ final class Runner
             $suffix = $fileIndex === 0 ? '' : '_'.$fileIndex;
             $fileIndex++;
             $ext = $material['ext'] ?: ($material['kind'] === 'video' ? 'mp4' : 'bin');
-            $destPath = sprintf('%s/%s%s.%s', $disciplineDir, $base, $suffix, $ext);
 
-            if ($this->downloader->download($material['url'], $destPath)) {
-                $stats['downloaded']++;
-                $saved++;
-            } else {
-                $failedHere++;
-            }
+            $jobs[] = [
+                'url' => $material['url'],
+                'dest' => sprintf('%s/%s%s.%s', $disciplineDir, $base, $suffix, $ext),
+                'label' => $code,
+            ];
         }
 
-        if ($failedHere > 0) {
-            $stats['failed'] += $failedHere;
-            // Урок считаем сделанным только когда забрали ВСЁ. Иначе, например, при обрыве
-            // видео на середине при уже скачанном PDF, отметка done закрыла бы урок навсегда
-            // и недокачанный файл никто бы не подобрал. Успешные файлы остаются на диске,
-            // а .part докачается по Range на следующем проходе.
-            $this->logger->warn("[$code] Забрано $saved из ".count($materials)." — оставляю урок незакрытым для повторного прохода");
-            return false;
-        }
-        if ($saved === 0) {
-            return false;
+        if ($links > 0) {
+            $this->logger->ok("[$code] Внешних ссылок записано в materials.md: $links");
         }
 
-        // 4. Эмулируем просмотр и завершение, чтобы разблокировать следующий урок
-        if ($this->emulateWatch) {
-            $this->markWatched($code, $ctx, $referer, $watchMinutes);
-        }
-
-        return true;
+        return [
+            'code' => $code,
+            'title' => $title,
+            'resourceId' => $lesson['resourceId'],
+            'ctx' => $ctx,
+            'referer' => $referer,
+            'links' => $links,
+            'jobs' => $jobs,
+        ];
     }
 
     /**
@@ -419,11 +489,7 @@ final class Runner
             return;
         }
         if (!is_file($path)) {
-            file_put_contents($path, "# Внешние материалы
-
-Ссылки вне LMS — скачать нельзя, открывать вручную.
-
-");
+            file_put_contents($path, "# Внешние материалы\n\nСсылки вне LMS — скачать нельзя, открывать вручную.\n\n");
         }
         file_put_contents($path, $line.PHP_EOL, FILE_APPEND);
     }

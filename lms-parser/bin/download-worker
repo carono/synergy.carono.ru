@@ -1,0 +1,33 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Скачивает один файл по заданию из stdin. Запускается только из DownloadQueue.
+ *
+ * Вход:  {"url":"...","dest":"..."} на stdin (не аргументами — argv видно в `ps`).
+ * Выход: код 0 при успехе, 1 при неудаче. Лог идёт в stdout, прогресс — в stderr.
+ */
+
+use Carono\LmsParser\Downloader;
+use Carono\LmsParser\Logger;
+
+$root = dirname(__DIR__);
+require $root.'/vendor/autoload.php';
+
+$raw = (string)stream_get_contents(STDIN);
+$job = json_decode($raw, true);
+if (!is_array($job) || empty($job['url']) || empty($job['dest'])) {
+    fwrite(STDERR, "Ожидался JSON {url, dest} на stdin\n");
+    exit(2);
+}
+
+$userAgent = (string)(getenv('LMS_USER_AGENT')
+    ?: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
+
+$cookieFile = (string)(getenv('LMS_COOKIE_FILE') ?: $root.'/cookies.json');
+
+$downloader = new Downloader(new Logger(false), $userAgent, $cookieFile);
+
+exit($downloader->download((string)$job['url'], (string)$job['dest']) ? 0 : 1);

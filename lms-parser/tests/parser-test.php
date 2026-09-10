@@ -109,6 +109,20 @@ check('materials(): вид — link', $colab[0]['kind'] ?? null, 'link');
 check('materials(): скрипт из <head> не попал в файлы',
     array_column($colab, 'ext'), [null]);
 
+// Документы LMS отдаёт через обёртку-просмотрщик — качать надо вложенный файл
+$wrapped = $parser->materials(
+    '<body><a href="https://lms.synergy.ru/docsViewer/?url=https://lms.synergy.ru/course/c_1/resources/abc.pdf">Описание</a></body>'
+);
+check('materials(): docsViewer развёрнут в прямую ссылку',
+    $wrapped[0]['url'] ?? null, 'https://lms.synergy.ru/course/c_1/resources/abc.pdf');
+check('materials(): docsViewer — это файл', $wrapped[0]['kind'] ?? null, 'file');
+check('materials(): расширение взято из вложенной ссылки', $wrapped[0]['ext'] ?? null, 'pdf');
+check('materials(): обёртка не дублируется отдельной записью', count($wrapped), 1);
+
+// docsViewer без параметра url разворачивать некуда — оставляем как есть
+$noInner = $parser->materials('<body><a href="https://lms.synergy.ru/docsViewer/?id=7">Файл</a></body>');
+check('materials(): docsViewer без url не ломается', $noInner, []);
+
 check('materials(): ссылки внутрь LMS игнорируются',
     $parser->materials('<body><a href="https://lms.synergy.ru/student/up">Обучение</a></body>'), []);
 check('materials(): пустая страница', $parser->materials('<body><p>&nbsp;</p></body>'), []);

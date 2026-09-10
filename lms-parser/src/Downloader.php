@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Carono\LmsParser;
 
 use GuzzleHttp\Client as Guzzle;
+use GuzzleHttp\Cookie\FileCookieJar;
 use GuzzleHttp\RequestOptions;
 
 final class Downloader
@@ -19,16 +20,28 @@ final class Downloader
 
     private Guzzle $http;
 
-    public function __construct(private readonly Logger $logger, string $userAgent)
-    {
-        $this->http = new Guzzle([
+    public function __construct(
+        private readonly Logger $logger,
+        string $userAgent,
+        ?string $cookieFile = null,
+    ) {
+        $config = [
             'headers' => [
                 'User-Agent' => $userAgent,
                 'Referer' => 'https://lms.synergy.ru/',
             ],
             'timeout' => 0,
             'connect_timeout' => 30,
-        ]);
+            'http_errors' => false,
+        ];
+
+        // Часть материалов лежит не в CDN, а на самой lms.synergy.ru — без cookie
+        // сессии оттуда приходит 403 DDoS-Guard вместо файла.
+        if ($cookieFile !== null && is_file($cookieFile)) {
+            $config['cookies'] = new FileCookieJar($cookieFile, true);
+        }
+
+        $this->http = new Guzzle($config);
     }
 
     public function download(string $url, string $destPath): bool
@@ -112,11 +125,24 @@ final class Downloader
 
         $progressLast = 0;
         $startTime = microtime(true);
+        $status = 0;
+        $rangeIgnored = false;
 
         try {
-            $this->http->get($url, [
+            $response = $this->http->get($url, [
                 RequestOptions::HEADERS => $headers,
                 RequestOptions::SINK => $sink,
+                RequestOptions::ON_HEADERS => function ($resp) use (&$status, &$rangeIgnored, $existing, $sink): void {
+                    $status = $resp->getStatusCode();
+                    // Мы просили продолжение, а сервер отдаёт файл с начала (200 вместо 206).
+                    // Дописывать такое в конец — гарантированно битый файл, поэтому чистим .part
+                    // и пишем с нуля в этой же попытке.
+                    if ($existing > 0 && $status === 200 && is_resource($sink)) {
+                        $rangeIgnored = true;
+                        ftruncate($sink, 0);
+                        rewind($sink);
+                    }
+                },
                 RequestOptions::PROGRESS => function ($total, $down) use (&$progressLast, $existing, $totalSize, $startTime) {
                     if ($down === 0) {
                         return;
@@ -142,6 +168,9 @@ final class Downloader
             if (is_resource($sink)) {
                 fclose($sink);
             }
+            // Тело ошибочного ответа Guzzle успевает записать в sink — откатываем
+            // файл к состоянию до попытки, иначе в .part копятся страницы ошибок.
+            $this->rollback($tmp, $existing);
             $this->logger->err('Ошибка скачивания: '.$e->getMessage());
             return false;
         }
@@ -150,6 +179,21 @@ final class Downloader
             fclose($sink);
         }
         fwrite(STDERR, "\n");
+
+        if ($rangeIgnored) {
+            $this->logger->warn('Сервер не поддержал Range — файл перекачан с начала: '.basename($destPath));
+            $existing = 0;
+        }
+
+        if ($status >= 300 || $status < 200) {
+            $body = (string)$response->getBody();
+            $hint = preg_match('~<title>\s*ddos.?guard~i', $body)
+                ? ' (страница DDoS-Guard — нужна свежая сессия: ./bin/cookies)'
+                : '';
+            $this->rollback($tmp, $existing);
+            $this->logger->err('HTTP '.$status.' вместо файла'.$hint.': '.basename($destPath));
+            return false;
+        }
 
         if (!is_file($tmp) || filesize($tmp) === 0) {
             $this->logger->err('Пустой файл после скачивания');
@@ -171,6 +215,30 @@ final class Downloader
         rename($tmp, $destPath);
         $this->logger->ok('Готово: '.basename($destPath).' ('.$this->humanSize((int)filesize($destPath)).')');
         return true;
+    }
+
+    /**
+     * Возвращает `.part` к размеру до попытки. Нужно потому, что Guzzle пишет в sink
+     * и тело ответа с ошибкой: без отката файл растёт склеенными страницами 403.
+     */
+    private function rollback(string $tmp, int $size): void
+    {
+        if (!is_file($tmp)) {
+            return;
+        }
+        if ($size <= 0) {
+            @unlink($tmp);
+            return;
+        }
+        if ((int)filesize($tmp) <= $size) {
+            return;
+        }
+        $fh = fopen($tmp, 'r+b');
+        if ($fh === false) {
+            return;
+        }
+        ftruncate($fh, $size);
+        fclose($fh);
     }
 
     private function humanSize(int $bytes): string

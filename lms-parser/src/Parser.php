@@ -275,10 +275,18 @@ final class Parser
         $materials = [];
         $seen = [];
 
-        $add = static function (string $kind, string $url, ?string $ext) use (&$materials, &$seen): void {
+        $add = function (string $kind, string $url, ?string $ext) use (&$materials, &$seen): void {
             $url = html_entity_decode(trim($url), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $url = $this->unwrapViewer($url);
             if ($url === '' || isset($seen[$url]) || str_starts_with($url, '#')) {
                 return;
+            }
+            if ($kind === 'file') {
+                // После разворачивания обёртки расширение надо брать из реальной ссылки
+                $realExt = strtolower(pathinfo((string)parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+                if ($realExt !== '') {
+                    $ext = $realExt;
+                }
             }
             $seen[$url] = true;
             $materials[] = ['kind' => $kind, 'url' => $url, 'ext' => $ext];
@@ -319,6 +327,29 @@ final class Parser
         }
 
         return $materials;
+    }
+
+    /**
+     * Разворачивает обёртку-просмотрщик LMS в прямую ссылку на файл.
+     *
+     * Документы отдаются не напрямую, а через `/docsViewer/?url=<реальный файл>`.
+     * Если качать саму обёртку, на диск ложится 2 КБ HTML вместо PDF.
+     */
+    private function unwrapViewer(string $url): string
+    {
+        if (!str_contains($url, 'docsViewer')) {
+            return $url;
+        }
+
+        $query = (string)parse_url($url, PHP_URL_QUERY);
+        if ($query === '') {
+            return $url;
+        }
+
+        parse_str($query, $params);
+        $inner = $params['url'] ?? null;
+
+        return is_string($inner) && $inner !== '' ? $inner : $url;
     }
 
     /**

@@ -4,6 +4,7 @@
 declare(strict_types=1);
 
 use Carono\LmsParser\Client;
+use Carono\LmsParser\DownloadQueue;
 use Carono\LmsParser\Downloader;
 use Carono\LmsParser\Logger;
 use Carono\LmsParser\Parser;
@@ -35,7 +36,7 @@ if (is_file($envPath)) {
 $opts = getopt('', [
     'semester:', 'discover-only', 'no-watch', 'minutes:',
     'max-disciplines:', 'max-lessons:', 'discipline:',
-    'retake::', 'no-retake', 'tabs', 'redo', 'help',
+    'retake::', 'no-retake', 'tabs', 'redo', 'threads:', 'help',
 ]);
 if (isset($opts['help'])) {
     echo "Использование: ./bin/parse [--semester=N] [--discover-only] [--no-watch] [--minutes=N]\n";
@@ -52,6 +53,7 @@ if (isset($opts['help'])) {
     echo "                           off   — игнорировать, работать только с «Текущими»\n";
     echo "  --no-retake              то же, что --retake=off\n";
     echo "  --tabs                   вместе с --discover-only: открыть каждую дисциплину и показать её вкладки материалов\n";
+    echo "  --threads=N              сколько файлов качать одновременно (default 4, 1 — последовательно)\n";
     echo "  --redo                   не доверять отметкам done в state.json и открыть уроки заново\n";
     echo "                           (нужно, если прошлый прогон забирал не все типы материалов; файлы на диске не перекачиваются)\n";
     exit(0);
@@ -64,6 +66,12 @@ $userAgent = (string)(getenv('LMS_USER_AGENT') ?: 'Mozilla/5.0 (X11; Linux x86_6
 $watchMinutes = (int)($opts['minutes'] ?? getenv('LMS_REQUIRED_WATCH_MINUTES') ?: 30);
 $emulateWatch = !isset($opts['no-watch']);
 $semesterFilter = isset($opts['semester']) ? (int)$opts['semester'] : null;
+
+$threads = (int)($opts['threads'] ?? getenv('LMS_THREADS') ?: 4);
+if ($threads < 1 || $threads > 32) {
+    fwrite(STDERR, "Неверное значение --threads: $threads (ожидается 1..32)\n");
+    exit(2);
+}
 
 $retakeMode = Runner::RETAKE_AUTO;
 if (isset($opts['no-retake'])) {
@@ -90,6 +98,7 @@ $logger->info("Output:  $outputDir");
 $logger->info("User:    ".Secret::maskLogin($login));
 $logger->info("Watch:   {$watchMinutes} мин".($emulateWatch ? '' : ' (только скачивание)'));
 $logger->info("Retake:  $retakeMode");
+$logger->info("Потоков: $threads");
 if ($semesterFilter !== null) {
     $logger->info("Семестр: $semesterFilter");
 }
@@ -99,7 +108,7 @@ $stateFile = (string)(getenv('LMS_STATE_FILE') ?: $root.'/state.json');
 
 $client = new Client($login, $password, $cookieFile, $userAgent, $logger);
 $parser = new Parser();
-$downloader = new Downloader($logger, $userAgent);
+$downloader = new Downloader($logger, $userAgent, $cookieFile);
 $scorm = new Scorm($client, $logger);
 $state = new State($stateFile);
 
@@ -183,5 +192,6 @@ $runner = new Runner(
     $outputDir, $watchMinutes, $emulateWatch,
     $maxDisciplines, $maxLessons, $disciplineFilter, $retakeMode,
     isset($opts['redo']),
+    new DownloadQueue($logger, $root.'/bin/download-worker', $threads),
 );
 $runner->run($semesterFilter);
