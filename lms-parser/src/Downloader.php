@@ -18,6 +18,17 @@ final class Downloader
      */
     private const MAX_ATTEMPTS = 5;
 
+    /** Ниже этой скорости (байт/с) дольше STALL_SECONDS закачка считается вставшей. */
+    private const STALL_BYTES_PER_SEC = 1024;
+    private const STALL_SECONDS = 120;
+
+    /**
+     * Сколько попыток подряд можно не сдвинуть закачку ни на байт, прежде чем бросить.
+     * Одна такая попытка ничего не доказывает: CDN отдаёт файлы неравномерно и на
+     * первых секундах может молчать. Три подряд — уже отказ, а не невезение.
+     */
+    private const MAX_STALLED_ATTEMPTS = 3;
+
     private Guzzle $http;
 
     /**
@@ -38,6 +49,14 @@ final class Downloader
             'timeout' => 0,
             'connect_timeout' => 30,
             'http_errors' => false,
+            // CDN отвечает 206, отдаёт мегабайт-другой и замолкает — соединение живо,
+            // байты не идут. Без этого попытка висит четверть часа и только потом
+            // считается неудачной. Обрываем, если скорость ниже 1 КБ/с дольше двух минут:
+            // повтор с Range обходится куда дешевле простоя воркера.
+            'curl' => [
+                CURLOPT_LOW_SPEED_LIMIT => self::STALL_BYTES_PER_SEC,
+                CURLOPT_LOW_SPEED_TIME => self::STALL_SECONDS,
+            ],
         ];
 
         // Часть материалов лежит не в CDN, а на самой lms.synergy.ru — без cookie
@@ -64,18 +83,23 @@ final class Downloader
         }
 
         $before = -1;
+        $stalled = 0;
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
             if ($this->attempt($url, $destPath)) {
                 return true;
             }
 
             $partial = is_file($destPath.'.part') ? (int)filesize($destPath.'.part') : 0;
-            if ($attempt < self::MAX_ATTEMPTS && $partial <= $before) {
-                // Попытка не добавила ни байта — дело не в обрыве, повторять бессмысленно
-                $this->logger->err('Повтор не сдвинул закачку — прекращаю: '.basename($destPath));
+            $stalled = $partial <= $before ? $stalled + 1 : 0;
+            $before = max($before, $partial);
+
+            if ($stalled >= self::MAX_STALLED_ATTEMPTS) {
+                $this->logger->err(sprintf(
+                    '%d попытки подряд не сдвинули закачку — прекращаю: %s',
+                    $stalled, basename($destPath)
+                ));
                 return false;
             }
-            $before = $partial;
 
             if ($attempt < self::MAX_ATTEMPTS) {
                 $this->logger->warn(sprintf(
