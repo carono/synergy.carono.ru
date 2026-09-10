@@ -291,6 +291,13 @@ final class Runner
         ));
     }
 
+    /** Путь файла относительно каталога выгрузки — чтобы state.json не зависел от места репозитория. */
+    private function relativePath(string $dest): string
+    {
+        $base = rtrim($this->outputDir, '/').'/';
+        return str_starts_with($dest, $base) ? substr($dest, strlen($base)) : $dest;
+    }
+
     /**
      * Закрывает урок в state.json — только если забраны ВСЕ его материалы.
      *
@@ -328,11 +335,22 @@ final class Runner
             $this->markWatched($plan['code'], $plan['ctx'], $plan['referer'], $plan['minutes']);
         }
 
+        // Ссылки на материалы нужны ./bin/verify: чтобы сверить размер файла с
+        // заявленным, нужен исходный URL, а второй раз разбирать урок ради него дорого.
+        $materials = [];
+        foreach ($plan['jobs'] as $job) {
+            $materials[] = [
+                'file' => $this->relativePath($job['dest']),
+                'url' => $job['url'],
+            ];
+        }
+
         $this->state->markLessonDone($disciplineId, $plan['resourceId'], [
             'code' => $plan['code'],
             'title' => $plan['title'],
             'files' => count($plan['jobs']),
             'links' => $plan['links'],
+            'materials' => $materials,
         ]);
         $doneCount++;
     }

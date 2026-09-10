@@ -163,5 +163,43 @@ check('declaredTotal: без заголовков размера — неизв�
 check('declaredTotal: 403 — размер тела ошибки не считается',
     Downloader::declaredTotal(403, '', '512', 0), null);
 
+// --- Verifier: классификация файла по краям ------------------------------------
+
+use Carono\LmsParser\Verifier;
+
+check('classify: пустой файл',
+    Verifier::classify('', '', 0, 'pdf'), Verifier::EMPTY_FILE);
+// Вместо PDF часто приезжает страница входа или ошибки CDN.
+check('classify: HTML под именем PDF',
+    Verifier::classify('<!DOCTYPE html><html><head>', '</html>', 5000, 'pdf'), Verifier::HTML);
+check('classify: целый PDF',
+    Verifier::classify('%PDF-1.7 ...', "... trailer\n%%EOF\n", 5000, 'pdf'), Verifier::OK);
+check('classify: PDF без %%EOF — оборван',
+    Verifier::classify('%PDF-1.7 ...', '...середина потока...', 5000, 'pdf'), Verifier::TRUNCATED);
+// LMS отдаёт ноутбуки Jupyter под именем .pdf — файл целый, лечится переименованием.
+check('classify: ноутбук под расширением pdf',
+    Verifier::classify('{"cells": [', ']}', 5000, 'pdf'), Verifier::MISLABELED);
+check('classify: PDF под расширением zip',
+    Verifier::classify('%PDF-1.7', '%%EOF', 5000, 'zip'), Verifier::MISLABELED);
+check('classify: ноутбук под своим расширением — не подмена',
+    Verifier::classify('{"cells": [', ']}', 5000, 'ipynb'), Verifier::OK);
+check('classify: docx — это zip внутри, не подмена',
+    Verifier::classify("PK\x03\x04\x14", 'хвост', 5000, 'docx'), null);
+check('realExtension: PDF', Verifier::realExtension('%PDF-1.7 ...'), 'pdf');
+check('realExtension: ZIP', Verifier::realExtension("PK\x03\x04\x14"), 'zip');
+check('realExtension: JSON', Verifier::realExtension('  {"cells": []}'), 'json');
+check('realExtension: mp4 не опознаётся по сигнатуре',
+    Verifier::realExtension("\x00\x00\x00 ftypisom"), null);
+check('classify: ZIP с локальным заголовком проверяется дальше',
+    Verifier::classify("PK\x03\x04\x14", 'хвост', 5000, 'zip'), null);
+// Незнакомая сигнатура — не приговор: целостность архива решает ZipArchive, а не края файла.
+check('classify: незнакомая сигнатура под расширением zip уходит на полную проверку',
+    Verifier::classify("GIF89a\x00", 'хвост', 5000, 'zip'), null);
+check('classify: HTML под именем ZIP распознаётся как страница, а не как битый архив',
+    Verifier::classify('<html><body>', 'хвост', 5000, 'zip'), Verifier::HTML);
+// Для видео краёв мало: moov-атом лежит в конце и проверяется ffprobe.
+check('classify: mp4 решает не по краям',
+    Verifier::classify("\x00\x00\x00 ftypisom", 'хвост', 5000, 'mp4'), null);
+
 printf("\nПроверок пройдено: %d, провалено: %d\n", $passed, $failed);
 exit($failed === 0 ? 0 : 1);

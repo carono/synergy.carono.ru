@@ -1,0 +1,303 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Проверка целостности скачанного и починка найденного.
+ *
+ * Обрыв закачки виден не всегда: файл переименовывается в готовый, а внутри половина
+ * видео без moov-атома или HTML-страница вместо PDF. Такой файл ./bin/parse больше не
+ * тронет — на диске он есть, значит «уже скачан». Поэтому проверять надо содержимое, а
+ * битые файлы удалять и снимать отметку done с их уроков, чтобы --redo забрал заново.
+ *
+ *   ./bin/verify --semester=4              только проверить и показать отчёт
+ *   ./bin/verify --semester=4 --fix        удалить битые и открыть их уроки заново
+ *   ./bin/verify --semester=4 --fix --refetch   то же плюс перекачать и проверить снова
+ */
+
+use Carono\LmsParser\Logger;
+use Carono\LmsParser\Verifier;
+
+$root = dirname(__DIR__);
+require $root.'/vendor/autoload.php';
+
+$envPath = $root.'/.env';
+if (is_file($envPath)) {
+    foreach (file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (str_starts_with(ltrim($line), '#')) continue;
+        if (!str_contains($line, '=')) continue;
+        [$k, $v] = explode('=', $line, 2);
+        $k = trim($k);
+        $v = trim($v, " \t\n\r\0\x0B\"'");
+        if ($k !== '' && getenv($k) === false) {
+            putenv("$k=$v");
+            $_ENV[$k] = $v;
+        }
+    }
+}
+
+$opts = getopt('', ['semester:', 'fix', 'refetch', 'no-size-check', 'threads:', 'help']);
+if (isset($opts['help'])) {
+    echo "Использование: ./bin/verify [--semester=N] [--fix] [--refetch]\n";
+    echo "  --semester=N      проверить только этот семестр (по умолчанию — все)\n";
+    echo "  --fix             удалить битые файлы и снять отметку done с их уроков\n";
+    echo "  --refetch         после --fix перекачать (./bin/parse --redo) и проверить ещё раз\n";
+    echo "  --no-size-check   не запрашивать у сервера размер файла (быстрее, но обрезанное\n";
+    echo "                    видео поймается только по содержимому)\n";
+    echo "  --threads=N       сколько файлов качать при --refetch (default 20)\n";
+    exit(0);
+}
+
+$semester = isset($opts['semester']) ? (int)$opts['semester'] : null;
+$fix = isset($opts['fix']);
+$refetch = isset($opts['refetch']);
+$sizeCheck = !isset($opts['no-size-check']);
+$threads = isset($opts['threads']) ? max(1, (int)$opts['threads']) : 20;
+
+$logger = new Logger();
+$outputDir = (string)(getenv('LMS_OUTPUT_DIR') ?: $root.'/downloads');
+$stateFile = (string)(getenv('LMS_STATE_FILE') ?: $root.'/state.json');
+$cookieFile = $root.'/cookies.json';
+
+if (!is_file($stateFile)) {
+    fwrite(STDERR, "Не найден $stateFile — нечего проверять\n");
+    exit(2);
+}
+
+$verifier = new Verifier();
+$sizes = $sizeCheck ? new RemoteSize($cookieFile, (string)(getenv('LMS_USER_AGENT') ?: 'Mozilla/5.0')) : null;
+
+/**
+ * Один проход проверки. Возвращает [проверено, список битых].
+ *
+ * @return array{0:int, 1:array<int, array{file:string, path:string, reason:string, discipline:string, resource:string}>}
+ */
+$scan = function () use ($stateFile, $outputDir, $semester, $verifier, $sizes, $logger): array {
+    $state = json_decode((string)file_get_contents($stateFile), true) ?: [];
+    $checked = 0;
+    $broken = [];
+    $seen = [];
+
+    foreach (($state['disciplines'] ?? []) as $disciplineId => $discipline) {
+        if ($semester !== null && (int)($discipline['semester'] ?? 0) !== $semester) {
+            continue;
+        }
+        foreach (($discipline['lessons'] ?? []) as $resourceId => $lesson) {
+            foreach (($lesson['materials'] ?? []) as $material) {
+                $path = $outputDir.'/'.$material['file'];
+                $seen[$path] = true;
+                $checked++;
+                $declared = $sizes?->of($material['url']);
+                $reason = $verifier->inspect($path, $declared);
+                if ($reason !== Verifier::OK) {
+                    $broken[] = [
+                        'file' => $material['file'],
+                        'path' => $path,
+                        'reason' => $reason,
+                        'discipline' => (string)$disciplineId,
+                        'resource' => (string)$resourceId,
+                    ];
+                }
+            }
+        }
+    }
+
+    // Файлы прошлых прогонов в state.json не записаны — их проверяем по содержимому.
+    // Ссылки на них нет, поэтому размер с сервером не сверить, но обрезанное видео и
+    // HTML вместо PDF видно и так.
+    $dir = $semester !== null
+        ? $outputDir.'/'.sprintf('semester_%02d', $semester)
+        : $outputDir;
+    if (is_dir($dir)) {
+        $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $file) {
+            $path = $file->getPathname();
+            if (!$file->isFile() || isset($seen[$path])) {
+                continue;
+            }
+            if (str_ends_with($path, '.part') || basename($path) === 'materials.md') {
+                continue;
+            }
+            $checked++;
+            $reason = $verifier->inspect($path);
+            if ($reason !== Verifier::OK) {
+                $broken[] = [
+                    'file' => substr($path, strlen(rtrim($outputDir, '/')) + 1),
+                    'path' => $path,
+                    'reason' => $reason,
+                    'discipline' => '',
+                    'resource' => '',
+                ];
+            }
+        }
+    }
+
+    return [$checked, $broken];
+};
+
+$logger->info('Проверяю целостность скачанного'.($semester !== null ? " (семестр $semester)" : ''));
+[$checked, $broken] = $scan();
+
+foreach ($broken as $item) {
+    $logger->err(sprintf('%s — %s', $item['file'], $item['reason']));
+}
+$logger->info(sprintf('Проверено файлов: %d, битых: %d', $checked, count($broken)));
+
+if ($broken === [] || !$fix) {
+    if ($broken !== [] && !$fix) {
+        $logger->warn('Запустите с --fix, чтобы удалить битые и открыть их уроки заново');
+    }
+    exit($broken === [] ? 0 : 1);
+}
+
+// --- Починка ------------------------------------------------------------------
+
+$state = json_decode((string)file_get_contents($stateFile), true) ?: [];
+$removed = 0;
+$reopened = 0;
+$renamed = 0;
+$refetchNeeded = [];
+foreach ($broken as $item) {
+    // Подменённое расширение — не порча: файл целый, перекачивать его бессмысленно,
+    // достаточно назвать по содержимому.
+    if ($item['reason'] === Verifier::MISLABELED) {
+        $target = renameToRealExtension($item['path']);
+        if ($target !== null) {
+            $renamed++;
+            if ($item['discipline'] !== '' && $item['resource'] !== '') {
+                $lesson = &$state['disciplines'][$item['discipline']]['lessons'][$item['resource']];
+                foreach (($lesson['materials'] ?? []) as $i => $material) {
+                    if ($material['file'] === $item['file']) {
+                        $lesson['materials'][$i]['file'] = dirname($item['file']).'/'.basename($target);
+                    }
+                }
+                unset($lesson);
+            }
+        }
+        continue;
+    }
+
+    $refetchNeeded[] = $item;
+    if (is_file($item['path']) && @unlink($item['path'])) {
+        $removed++;
+    }
+    @unlink($item['path'].'.part');
+    if ($item['discipline'] === '' || $item['resource'] === '') {
+        continue;
+    }
+    if (isset($state['disciplines'][$item['discipline']]['lessons'][$item['resource']]['done'])) {
+        unset($state['disciplines'][$item['discipline']]['lessons'][$item['resource']]['done']);
+        $reopened++;
+    }
+}
+file_put_contents(
+    $stateFile,
+    json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+);
+$logger->ok(sprintf(
+    'Переименовано: %d, удалено: %d, уроков открыто заново: %d',
+    $renamed, $removed, $reopened
+));
+
+if ($refetchNeeded === []) {
+    $logger->ok('Перекачивать нечего — всё найденное чинилось переименованием');
+    exit(0);
+}
+
+if (!$refetch) {
+    $logger->info('Перекачать: ./bin/parse'.($semester !== null ? " --semester=$semester" : '').' --retake=force --no-watch --redo');
+    exit(1);
+}
+
+$command = [PHP_BINARY, $root.'/bin/parse', '--retake=force', '--no-watch', '--redo', '--threads='.$threads];
+if ($semester !== null) {
+    $command[] = '--semester='.$semester;
+}
+$logger->info('Перекачиваю недостающее...');
+$process = proc_open($command, [1 => STDOUT, 2 => STDERR], $pipes, $root);
+if (is_resource($process)) {
+    proc_close($process);
+}
+
+$logger->info('Проверяю ещё раз');
+[$checkedAgain, $stillBroken] = $scan();
+foreach ($stillBroken as $item) {
+    $logger->err(sprintf('%s — %s (не починилось)', $item['file'], $item['reason']));
+}
+$logger->info(sprintf(
+    'Итог: проверено %d, было битых %d (из них переименовано %d, перекачано %d), осталось битых %d',
+    $checkedAgain,
+    count($broken),
+    $renamed,
+    count($refetchNeeded) - count($stillBroken),
+    count($stillBroken),
+));
+
+exit($stillBroken === [] ? 0 : 1);
+
+/** Размер файла по данным сервера — с кэшем, чтобы не дёргать HEAD дважды за прогон. */
+final class RemoteSize
+{
+    /** @var array<string, int|null> */
+    private array $cache = [];
+    private \GuzzleHttp\Client $http;
+
+    public function __construct(string $cookieFile, string $userAgent)
+    {
+        $config = [
+            'headers' => ['User-Agent' => $userAgent, 'Referer' => 'https://lms.synergy.ru/'],
+            'timeout' => 30,
+            'connect_timeout' => 15,
+            'http_errors' => false,
+        ];
+        if (is_file($cookieFile)) {
+            $saved = json_decode((string)file_get_contents($cookieFile), true);
+            $config['cookies'] = new \GuzzleHttp\Cookie\CookieJar(false, is_array($saved) ? $saved : []);
+        }
+        $this->http = new \GuzzleHttp\Client($config);
+    }
+
+    public function of(string $url): ?int
+    {
+        if (array_key_exists($url, $this->cache)) {
+            return $this->cache[$url];
+        }
+        $size = null;
+        try {
+            $response = $this->http->head($url);
+            if ($response->getStatusCode() === 200) {
+                $length = $response->getHeaderLine('Content-Length');
+                $size = $length !== '' ? (int)$length : null;
+            }
+        } catch (\Throwable) {
+            $size = null;
+        }
+        return $this->cache[$url] = $size;
+    }
+}
+
+/**
+ * Переименовывает файл по его настоящему формату. Возвращает новый путь или null,
+ * если формат не распознан или имя уже верное.
+ */
+function renameToRealExtension(string $path): ?string
+{
+    if (!is_file($path)) {
+        return null;
+    }
+    $head = (string)file_get_contents($path, false, null, 0, 1024);
+    $real = Verifier::realExtension($head);
+    if ($real === null) {
+        return null;
+    }
+    // Ноутбук Jupyter — это тоже JSON, но называть его .json значит потерять смысл.
+    if ($real === 'json' && str_contains($head, '"cells"')) {
+        $real = 'ipynb';
+    }
+    $target = preg_replace('~\.[^.]+$~', '', $path).'.'.$real;
+    if ($target === $path || $target === null) {
+        return null;
+    }
+    return rename($path, $target) ? $target : null;
+}
