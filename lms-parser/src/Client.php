@@ -25,6 +25,9 @@ final class Client
      */
     private const REFRESH_MAX_STREAK = 3;
 
+    /** Сколько раз повторять запрос при обрыве соединения, прежде чем сдаться. */
+    private const NETWORK_RETRIES = 4;
+
     private Guzzle $http;
     private FileCookieJar $jar;
     private int $lastRefresh = 0;
@@ -195,19 +198,47 @@ final class Client
      */
     private function retryOnExpiry(callable $request): mixed
     {
-        try {
-            $result = $request();
-            $this->refreshStreak = 0;
-            return $result;
-        } catch (\Throwable $e) {
-            if (!$this->looksExpired($e) || !$this->refreshSession()) {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                $result = $request();
+                // Запрос прошёл — серия обновлений закончилась, следующий сбой начнёт отсчёт заново.
+                $this->refreshStreak = 0;
+                return $result;
+            } catch (\Throwable $e) {
+                // Обрыв соединения — не повод валить прогон целиком: тот же CDN рвёт TLS
+                // и родителю. Раньше такая ошибка уходила наружу и убивала процесс.
+                if ($this->looksTransient($e) && $attempt <= self::NETWORK_RETRIES) {
+                    $this->logger->warn(sprintf(
+                        'Сеть подвела (%s), повтор %d из %d',
+                        self::shortError($e), $attempt, self::NETWORK_RETRIES
+                    ));
+                    sleep(min(15, 2 ** $attempt));
+                    continue;
+                }
+                if ($this->looksExpired($e) && $this->refreshSession()) {
+                    // Обновились — даём запросу ещё один шанс на общих условиях.
+                    continue;
+                }
                 throw $e;
             }
-            $result = $request();
-            // Запрос прошёл — серия обновлений закончилась, следующий сбой начнёт отсчёт заново.
-            $this->refreshStreak = 0;
-            return $result;
         }
+    }
+
+    private function looksTransient(\Throwable $e): bool
+    {
+        if ($e instanceof \GuzzleHttp\Exception\ConnectException) {
+            return true;
+        }
+        if (!$e instanceof \GuzzleHttp\Exception\RequestException) {
+            return false;
+        }
+        return (bool)preg_match('~cURL error (7|18|28|35|52|56|3\d)~', $e->getMessage());
+    }
+
+    private static function shortError(\Throwable $e): string
+    {
+        $message = $e->getMessage();
+        return preg_match('~cURL error \d+~', $message, $m) ? $m[0] : substr($message, 0, 60);
     }
 
     private function looksExpired(\Throwable $e): bool
