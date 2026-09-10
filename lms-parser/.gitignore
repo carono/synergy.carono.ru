@@ -6,3 +6,4 @@ state.json
 cookies.json
 *.log
 logs/
+var/

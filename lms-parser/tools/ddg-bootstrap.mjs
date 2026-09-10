@@ -69,10 +69,24 @@ if (entry === null) {
 
 const { chromium } = await import(entry);
 
-const browser = await chromium.launch({ headless: Boolean(args.headless) });
+// Профиль постоянный, а не одноразовый: с чистым контекстом DDoS-Guard каждый запуск
+// видит нового посетителя — нет ни localStorage, ни кэша, ни накопленной истории, — и
+// гонит через челлендж. С сохранённым профилем состояние копится между запусками.
+const profileDir = args.profile
+  || process.env.LMS_BROWSER_PROFILE
+  || path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'var', 'browser-profile');
+fs.mkdirSync(profileDir, { recursive: true });
+
+const context = await chromium.launchPersistentContext(profileDir, {
+  headless: Boolean(args.headless),
+  locale: 'ru-RU',
+  userAgent: USER_AGENT,
+  viewport: null,
+  args: ['--disable-blink-features=AutomationControlled'],
+});
+const browser = context.browser();
 try {
-  const context = await browser.newContext({ locale: 'ru-RU', userAgent: USER_AGENT });
-  const page = await context.newPage();
+  const page = context.pages()[0] ?? await context.newPage();
 
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 90000 });
 
@@ -159,5 +173,8 @@ try {
 
   process.stdout.write(JSON.stringify(cookies));
 } finally {
-  await browser.close();
+  await context.close();
+  if (browser !== null) {
+    await browser.close().catch(() => {});
+  }
 }
