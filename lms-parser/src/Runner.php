@@ -182,6 +182,24 @@ final class Runner
         }
 
         if (empty($lessons)) {
+            // Практика устроена иначе: не список уроков, а курс mcresource с темами,
+            // которые рисуются на клиенте. Файловых ссылок страница не отдаёт, качать
+            // нечего — но это надо сказать, а не выдать то же «уроков не найдено».
+            $resource = $this->parser->resourceCourse($html);
+            if ($resource !== null) {
+                $this->logger->warn(sprintf(
+                    'Дисциплина-ресурс «%s»: %d тем, файловых материалов нет (содержимое рисуется на клиенте)',
+                    $resource['title'],
+                    count($resource['items']),
+                ));
+                $this->state->setDisciplineMeta($id, [
+                    'content_type' => 'mcresource',
+                    'resource_title' => $resource['title'],
+                    'resource_url' => $resource['url'],
+                    'resource_items' => array_column($resource['items'], 'title'),
+                ]);
+                return;
+            }
             $this->logger->warn("Уроков не найдено в HTML дисциплины");
             return;
         }

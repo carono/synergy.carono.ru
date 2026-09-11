@@ -217,6 +217,42 @@ final class Parser
     }
 
     /**
+     * Дисциплина-«ресурс»: вместо списка уроков — курс `/lntools/mcresource/view/...`
+     * с темами, которые рисуются на клиенте.
+     *
+     * Так устроена практика: disciplineLessons() возвращает по ней пустой список, и
+     * прогон молча писал «уроков не найдено в HTML дисциплины» — не отличить от сломанного
+     * разбора. Скачивать там нечего (файловых ссылок страница не отдаёт), но сказать об
+     * этом надо внятно.
+     *
+     * @return array{title:string, url:string, items:list<array{title:string, url:string}>}|null
+     */
+    public function resourceCourse(string $html): ?array
+    {
+        $crawler = new Crawler($html);
+
+        $head = $crawler->filter('.materials table a[href*="/lntools/mcresource/view/"]');
+        if ($head->count() === 0) {
+            return null;
+        }
+
+        $items = [];
+        foreach ($crawler->filter('.materials-structure a[href*="/lntools/mcresource/view/"]') as $a) {
+            $node = new Crawler($a);
+            $items[] = [
+                'title' => trim($node->text()),
+                'url' => html_entity_decode((string)($node->attr('href') ?? '')),
+            ];
+        }
+
+        return [
+            'title' => trim($head->first()->text()),
+            'url' => html_entity_decode((string)($head->first()->attr('href') ?? '')),
+            'items' => $items,
+        ];
+    }
+
+    /**
      * Извлекает из HTML страницы /learning/view параметры:
      *  - learningPackageId, courseVersionId, courseUserId
      *  - первый tocItem id (item_NNN)

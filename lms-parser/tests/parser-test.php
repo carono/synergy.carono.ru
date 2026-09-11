@@ -204,6 +204,20 @@ check('classify: HTML под именем ZIP распознаётся как с
 check('classify: mp4 решает не по краям',
     Verifier::classify("\x00\x00\x00 ftypisom", 'хвост', 5000, 'mp4'), null);
 
+// Практика — дисциплина без уроков: вместо них курс mcresource с темами.
+$resourceHtml = (string)file_get_contents($fixtures.'/discipline_resource_course.html');
+$resource = $parser->resourceCourse($resourceHtml);
+check('resourceCourse: нашёл курс-ресурс', $resource !== null, true);
+check('resourceCourse: заголовок курса',
+    str_starts_with((string)($resource['title'] ?? ''), 'Технологическая'), true);
+check('resourceCourse: все темы', count($resource['items'] ?? []), 5);
+check('resourceCourse: первая тема', $resource['items'][0]['title'] ?? null, 'Тема 1. Что такое практика');
+check('resourceCourse: в ссылке темы раскодирован &amp;',
+    str_contains((string)($resource['items'][0]['url'] ?? ''), '&amp;'), false);
+check('resourceCourse: у обычной дисциплины курса-ресурса нет', $parser->resourceCourse($discHtml), null);
+check('disciplineLessons: у дисциплины-ресурса уроков нет',
+    $parser->disciplineLessons($resourceHtml)['lessons'], []);
+
 // Простой на всю ночь был именно здесь: сессия протухала, обновить её было нечем,
 // а прогон не падал, а ходил по кругу. Теперь окружение проверяется заранее и громко.
 $display = getenv('DISPLAY');
