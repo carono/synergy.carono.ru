@@ -134,6 +134,9 @@ final class Runner
 
         try {
             $html = $this->client->getHtml($discipline['contentsUrl']);
+        } catch (SessionLostException $e) {
+            // Сессию не восстановить — дальше весь прогон будет ловить 403. Пусть падает.
+            throw $e;
         } catch (\Throwable $e) {
             $this->logger->err("Не открыть дисциплину: ".$e->getMessage());
             $stats['failed']++;
@@ -165,6 +168,9 @@ final class Runner
                         'retake_url' => $retake['url'],
                     ]);
                 }
+            } catch (SessionLostException $e) {
+                // Сессию не восстановить — дальше весь прогон будет ловить 403. Пусть падает.
+                throw $e;
             } catch (\Throwable $e) {
                 $this->logger->warn('Не открыть вкладку пересдачи: '.$e->getMessage());
             }
@@ -457,6 +463,9 @@ final class Runner
             $lessonHtml = $this->client->getHtml($lesson['viewUrl'], [
                 'Referer' => 'https://lms.synergy.ru/student/up',
             ]);
+        } catch (SessionLostException $e) {
+            // Сессию не восстановить — дальше весь прогон будет ловить 403. Пусть падает.
+            throw $e;
         } catch (\Throwable $e) {
             $this->logger->err("[$code] Ошибка открытия урока: ".$e->getMessage());
             $stats['failed']++;
@@ -480,6 +489,9 @@ final class Runner
 
         try {
             $opened = $this->scorm->chooseItem($ctx['firstItemId'], $ctx['learningPackageId'], $referer);
+        } catch (SessionLostException $e) {
+            // Сессию не восстановить — дальше весь прогон будет ловить 403. Пусть падает.
+            throw $e;
         } catch (\Throwable $e) {
             $this->logger->err("[$code] navigation_request: ".$e->getMessage());
             $stats['failed']++;
@@ -495,6 +507,9 @@ final class Runner
 
         try {
             $itemHtml = $this->client->getHtml($itemLink, ['Referer' => $referer]);
+        } catch (SessionLostException $e) {
+            // Сессию не восстановить — дальше весь прогон будет ловить 403. Пусть падает.
+            throw $e;
         } catch (\Throwable $e) {
             $this->logger->err("[$code] Не открыть iframe: ".$e->getMessage());
             $stats['failed']++;
@@ -579,6 +594,9 @@ final class Runner
                 $minutes,
             );
             $this->logger->ok("[$code] Отмечен просмотренным ($minutes мин)");
+        } catch (SessionLostException $e) {
+            // Сессию не восстановить — дальше весь прогон будет ловить 403. Пусть падает.
+            throw $e;
         } catch (\Throwable $e) {
             $this->logger->warn("[$code] Не получилось отметить просмотр: ".$e->getMessage());
         }

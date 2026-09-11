@@ -27,6 +27,15 @@ final class Client
      */
     private const REFRESH_MAX_STREAK = 3;
 
+    /**
+     * Сколько обновлений подряд может провалиться, прежде чем прогон считается мёртвым.
+     *
+     * В отличие от REFRESH_MAX_STREAK этот счётчик не обнуляется в refreshIfStale():
+     * именно из-за такого обнуления прогон умел сутками ходить по кругу
+     * «сессия протухла → обновить нечем → подождать минуту → повторить».
+     */
+    private const REFRESH_MAX_FAILURES = 5;
+
     /** Сколько раз повторять запрос при обрыве соединения, прежде чем сдаться. */
     private const NETWORK_RETRIES = 7;
 
@@ -62,6 +71,8 @@ final class Client
     private int $lastRefresh = 0;
     /** Обновлений подряд без успешного запроса между ними. */
     private int $refreshStreak = 0;
+    /** Провалившихся обновлений подряд; обнуляется только успешным обновлением. */
+    private int $refreshFailures = 0;
     /** Когда сессия получена — от этого считается её возраст. */
     private int $sessionSince = 0;
     /** @var (callable():void)|null освободить канал перед челленджем */
@@ -141,6 +152,46 @@ final class Client
     }
 
     /**
+     * Можно ли вообще обновить сессию в текущем окружении.
+     *
+     * Возвращает причину отказа или null, если обновление возможно. Проверять это надо
+     * на старте прогона, а не когда сессия уже протухла: час работы впустую отличается
+     * от честного отказа в первую секунду только потраченным временем.
+     */
+    public function canRefreshSession(): ?string
+    {
+        if ((string)getenv('DISPLAY') === '') {
+            return 'не задан DISPLAY — браузер для челленджа DDoS-Guard не запустить '
+                .'(запускайте с DISPLAY=:0, в WSL нужен WSLg)';
+        }
+        $cookies = dirname(__DIR__).'/bin/cookies';
+        if (!is_file($cookies)) {
+            return "нет $cookies — обновлять сессию нечем";
+        }
+        return null;
+    }
+
+    /**
+     * Учесть провалившееся обновление. Неустранимая причина (обновлять нечем) валит прогон
+     * сразу, устранимая — после REFRESH_MAX_FAILURES попыток подряд.
+     */
+    private function noteRefreshFailure(string $reason, bool $fatal = false): bool
+    {
+        $this->refreshFailures++;
+        if ($fatal) {
+            throw new SessionLostException('Сессия LMS потеряна и обновить её нечем: '.$reason);
+        }
+        if ($this->refreshFailures >= self::REFRESH_MAX_FAILURES) {
+            throw new SessionLostException(sprintf(
+                'Сессия LMS не восстановилась за %d попыток подряд (последняя причина: %s)',
+                $this->refreshFailures,
+                $reason,
+            ));
+        }
+        return false;
+    }
+
+    /**
      * Сессия LMS живёт минуты, а полный прогон — часы. Когда она протухает, LMS отвечает
      * 403 (страницей DDoS-Guard) на любой запрос, и без обновления cookies остаток
      * прогона превращается в поток ошибок «не удалось открыть урок».
@@ -151,12 +202,18 @@ final class Client
      */
     public function refreshSession(): bool
     {
+        if (($why = $this->canRefreshSession()) !== null) {
+            $this->logger->err('Сессия LMS протухла, обновить нечем: '.$why);
+            return $this->noteRefreshFailure($why, true);
+        }
+
         if ($this->refreshStreak >= self::REFRESH_MAX_STREAK) {
-            $this->logger->warn(sprintf(
-                'Сессия не восстановилась за %d обновления подряд — больше не пробую',
+            $why = sprintf(
+                'сессия не восстановилась за %d обновления подряд',
                 self::REFRESH_MAX_STREAK,
-            ));
-            return false;
+            );
+            $this->logger->warn(ucfirst($why).' — больше не пробую');
+            return $this->noteRefreshFailure($why);
         }
 
         // Backoff: каждое следующее обновление подряд ждёт вдвое дольше — 60, 120, 240 с.
@@ -170,11 +227,6 @@ final class Client
         }
         $this->lastRefresh = $now;
         $this->refreshStreak++;
-
-        if ((string)getenv('DISPLAY') === '') {
-            $this->logger->warn('Сессия LMS протухла, но DISPLAY не задан — обновить cookies браузером нельзя');
-            return false;
-        }
 
         $this->logger->warn('Обновляю сессию LMS браузером...');
 
@@ -206,7 +258,7 @@ final class Client
                 ($this->resumeHook)();
             }
             $this->logger->warn('Не удалось запустить ./bin/cookies');
-            return false;
+            return $this->noteRefreshFailure('не удалось запустить ./bin/cookies');
         }
         $out = (string)stream_get_contents($pipes[1]).(string)stream_get_contents($pipes[2]);
         fclose($pipes[1]);
@@ -221,10 +273,11 @@ final class Client
 
         if ($code !== 0) {
             $this->logger->warn('./bin/cookies завершился с кодом '.$code.': '.trim($out));
-            return false;
+            return $this->noteRefreshFailure('./bin/cookies завершился с кодом '.$code);
         }
 
         $this->sessionSince = time();
+        $this->refreshFailures = 0;
         $this->logger->ok('Сессия LMS обновлена');
         return true;
     }

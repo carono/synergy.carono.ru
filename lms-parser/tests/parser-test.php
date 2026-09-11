@@ -11,7 +11,10 @@ declare(strict_types=1);
  * Возвращает 0, если все проверки прошли, иначе 1 и список расхождений.
  */
 
+use Carono\LmsParser\Client;
+use Carono\LmsParser\Logger;
 use Carono\LmsParser\Parser;
+use Carono\LmsParser\SessionLostException;
 
 $root = dirname(__DIR__);
 require $root.'/vendor/autoload.php';
@@ -200,6 +203,33 @@ check('classify: HTML под именем ZIP распознаётся как с
 // Для видео краёв мало: moov-атом лежит в конце и проверяется ffprobe.
 check('classify: mp4 решает не по краям',
     Verifier::classify("\x00\x00\x00 ftypisom", 'хвост', 5000, 'mp4'), null);
+
+// Простой на всю ночь был именно здесь: сессия протухала, обновить её было нечем,
+// а прогон не падал, а ходил по кругу. Теперь окружение проверяется заранее и громко.
+$display = getenv('DISPLAY');
+$cookieFile = tempnam(sys_get_temp_dir(), 'lms-cookies');
+$makeClient = static fn(): Client => new Client('u', 'p', $cookieFile, 'UA', new Logger());
+
+putenv('DISPLAY');
+$client = $makeClient();
+check('canRefreshSession: без DISPLAY называет причину',
+    str_contains((string)$client->canRefreshSession(), 'DISPLAY'), true);
+
+$thrown = null;
+try {
+    $client->refreshSession();
+} catch (\Throwable $e) {
+    $thrown = $e;
+}
+check('refreshSession: без DISPLAY падает, а не возвращает false',
+    $thrown instanceof SessionLostException, true);
+unset($client);
+
+putenv('DISPLAY=:0');
+check('canRefreshSession: с DISPLAY возражений нет', $makeClient()->canRefreshSession(), null);
+
+putenv($display === false ? 'DISPLAY' : "DISPLAY=$display");
+@unlink($cookieFile);
 
 printf("\nПроверок пройдено: %d, провалено: %d\n", $passed, $failed);
 exit($failed === 0 ? 0 : 1);

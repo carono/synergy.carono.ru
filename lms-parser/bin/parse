@@ -11,6 +11,7 @@ use Carono\LmsParser\Parser;
 use Carono\LmsParser\Runner;
 use Carono\LmsParser\Scorm;
 use Carono\LmsParser\Secret;
+use Carono\LmsParser\SessionLostException;
 use Carono\LmsParser\State;
 
 $root = dirname(__DIR__);
@@ -36,7 +37,7 @@ if (is_file($envPath)) {
 $opts = getopt('', [
     'semester:', 'discover-only', 'no-watch', 'minutes:',
     'max-disciplines:', 'max-lessons:', 'discipline:',
-    'retake::', 'no-retake', 'tabs', 'redo', 'threads:', 'pid-file:', 'help',
+    'retake::', 'no-retake', 'tabs', 'redo', 'threads:', 'pid-file:', 'display:', 'help',
 ]);
 if (isset($opts['help'])) {
     echo "Использование: ./bin/parse [--semester=N] [--discover-only] [--no-watch] [--minutes=N]\n";
@@ -55,10 +56,22 @@ if (isset($opts['help'])) {
     echo "  --tabs                   вместе с --discover-only: открыть каждую дисциплину и показать её вкладки материалов\n";
     echo "  --threads=N              сколько файлов качать одновременно (default 4, 1 — последовательно)\n";
     echo "  --pid-file=PATH          записать свой PID (для остановки прогона без pkill по шаблону)\n";
+    echo "  --display=:N             X-дисплей для обновления сессии браузером (default :0, LMS_DISPLAY;\n";
+    echo "                           --display=off — не обновлять сессию: прогон завершится, как только она протухнет)\n";
     echo "  --redo                   не доверять отметкам done в state.json и открыть уроки заново\n";
     echo "                           (нужно, если прошлый прогон забирал не все типы материалов; файлы на диске не перекачиваются)\n";
     exit(0);
 }
+
+// Обновить протухшую сессию можно только видимым браузером, а ему нужен X-сервер.
+// Раньше запуск без DISPLAY (cron, nohup из чужого окружения) не падал, а часами ходил
+// по кругу «сессия протухла → обновить нечем». Теперь дисплей подставляется сам,
+// а явный --display=off означает осознанный отказ от обновления.
+$display = (string)($opts['display'] ?? getenv('LMS_DISPLAY') ?: '');
+if ($display === '') {
+    $display = (string)(getenv('DISPLAY') ?: ':0');
+}
+putenv($display === 'off' ? 'DISPLAY' : "DISPLAY=$display");
 
 $login = (string)(getenv('LMS_LOGIN') ?: '');
 $password = (string)(getenv('LMS_PASSWORD') ?: '');
@@ -207,6 +220,14 @@ $client->useDownloadHooks(
 // проходить челлендж. Сессию держит родитель.
 $queue->onAuthFailure(static fn() => $client->refreshSession());
 
+// Проверяем на старте, а не в момент протухания: прогон, который заведомо не переживёт
+// первую же протухшую сессию, дешевле не начинать.
+if ($display !== 'off' && ($why = $client->canRefreshSession()) !== null) {
+    $logger->err('Обновлять сессию LMS нечем: '.$why);
+    $logger->err('Прогон не начат. Запустите с DISPLAY=:0 (или --display=:0), либо осознанно --display=off.');
+    exit(3);
+}
+
 $runner = new Runner(
     $client, $parser, $downloader, $scorm, $state, $logger,
     $outputDir, $watchMinutes, $emulateWatch,
@@ -214,4 +235,9 @@ $runner = new Runner(
     isset($opts['redo']),
     $queue,
 );
-$runner->run($semesterFilter);
+try {
+    $runner->run($semesterFilter);
+} catch (SessionLostException $e) {
+    $logger->err('Прогон остановлен: '.$e->getMessage());
+    exit(4);
+}
