@@ -128,7 +128,11 @@ try {
   }
 
   // Логинимся тем же XHR, что и форма на сайте, — cookies осядут в контексте браузера.
-  const raw = await page.evaluate(async ([user, pass]) => {
+  //
+  // DDoS-Guard проверяет POST отдельно от загрузки страницы: даже когда челлендж на «/»
+  // уже пройден, первый же XHR может вернуть HTML челленджа вместо JSON. Лечится
+  // перезагрузкой страницы (её скрипт освежает cookie защиты) и повторной попыткой.
+  const doLogin = () => page.evaluate(async ([user, pass]) => {
     const response = await fetch('/user/login', {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -137,12 +141,25 @@ try {
     return await response.text();
   }, [login, password]);
 
-  let json;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    console.error('Ответ /user/login — не JSON: ' + raw.slice(0, 200));
-    process.exit(5);
+  let raw = '';
+  let json = null;
+  for (let attempt = 1; attempt <= 4 && json === null; attempt++) {
+    raw = await doLogin();
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      if (attempt === 4) {
+        console.error('Ответ /user/login — не JSON: ' + raw.slice(0, 200));
+        process.exit(5);
+      }
+      console.error(`Ответ /user/login — челлендж DDoS-Guard, попытка ${attempt} из 4; перезагружаю страницу.`);
+      await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 90000 }).catch(() => {});
+      for (let i = 0; i < 20; i++) {
+        if (!/ddos.?guard/i.test(await page.title())) break;
+        await page.waitForTimeout(3000);
+      }
+      await page.waitForTimeout(3000 * attempt);
+    }
   }
   if (json.alertMessage || !json.redirect) {
     console.error('Не удалось войти: ' + (json.alertMessage || raw.slice(0, 200)));
